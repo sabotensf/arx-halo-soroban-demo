@@ -1,0 +1,21 @@
+[package]
+name = "recordpool-card"
+description = "RWA-backed NFT for RecordPool NFC-chipped cards, built on OpenZeppelin Stellar Contracts"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = { workspace = true }
+stellar-access = { workspace = true }
+stellar-macros = { workspace = true }
+stellar-tokens = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+p256 = { workspace = true }

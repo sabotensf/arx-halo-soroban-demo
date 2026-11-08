@@ -1,0 +1,7 @@
+/target
+.soroban/
+.stellar/
+*.key
+.env
+deployments/*.local.json
+**/test_snapshots/
