@@ -1,4 +1,6 @@
-# RecordPool Chipped Card — an RWA-backed NFT on Stellar Soroban
+# HaLo NFC Chips on Stellar Soroban — RWA-backed NFTs for tap-to-play music cards
+
+> **Disclaimer:** This is an independent demo project. It is not affiliated with, endorsed by, or sponsored by Arx Research, the Stellar Development Foundation, OpenZeppelin or Circle. "HaLo" and "Arx" are referenced only to describe the NFC chips this demo is designed to work with.
 
 A **RecordPool card** is an NFC chip card for music: tap it on a phone and it plays.
 Each card carries a [HaLo](https://github.com/arx-research/libhalo) NFC chip with its own secp256k1 key pair, which can't be read out or copied.
