@@ -16,9 +16,20 @@ This repo only adds the RecordPool-specific logic: binding chips to tokens, USDC
 | **Network** | Stellar testnet |
 | **Contract** | [`CDHRGMDZHKYNUUC3BDOLYPNHVLHCWKAA5L5C4YCHTNODQ6A3QXEJZYKP`](https://stellar.expert/explorer/testnet/contract/CDHRGMDZHKYNUUC3BDOLYPNHVLHCWKAA5L5C4YCHTNODQ6A3QXEJZYKP) |
 | **Payment token** | Circle testnet USDC — SAC [`CBIELTK6…DAMA`](https://stellar.expert/explorer/testnet/contract/CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA) (`USDC:GBBD47IF…LFLA5`) |
+| **Hardware** | [Arx Research HaLo](https://arx-docs.vercel.app/HaLo/specifications) NFC chips (secp256k1), read with [libhalo](https://github.com/arx-research/libhalo) |
 | **Stack** | Rust · soroban-sdk 28 · OpenZeppelin `stellar-tokens` / `stellar-access` / `stellar-macros` 0.8 · Stellar CLI 30 |
 
 ---
+
+## What's a HaLo chip?
+
+HaLo ("Hardware Locked") is an NFC chip made by [Arx Research](https://arx-docs.vercel.app/HaLo/specifications) for linking physical objects to blockchains. Embedded in a card, a sticker or a product, it works like a tiny hardware wallet:
+
+- **The keys live on the chip.** It generates its own secp256k1 key pairs (the curve Bitcoin and Ethereum use). The chip offers no way to extract, replace or delete its default keys. A copied card has no key, so it can't produce valid signatures.
+- **It signs when tapped.** Hold it to a phone and it can sign a message, which proves that this specific physical object is present right now.
+- **No app needed.** Arx's open-source [libhalo](https://github.com/arx-research/libhalo) library talks to the chip from a phone browser (Chrome on Android, Safari on iOS), from mobile apps and from desktop NFC readers.
+
+In this demo, each RecordPool card's HaLo key is recorded on-chain when the card is registered, and the Soroban contract checks the chip's signatures with a native host function. See [HaLo chips](#halo-chips) below for the exact signing format.
 
 ## Why this use case
 
