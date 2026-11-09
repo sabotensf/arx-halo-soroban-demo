@@ -17,6 +17,9 @@ use crate::{
     storage::{self, Config, Listing, PendingCard},
 };
 
+/// Domain-separation prefix a HaLo chip applies in `sign_challenge` (key slot 2).
+pub const HALO_CHALLENGE_PREFIX: &[u8] = b"\x19External chall pk2:\n";
+
 /// Role allowed to register physical cards and manage royalties.
 pub const ISSUER: Symbol = symbol_short!("issuer");
 
@@ -137,22 +140,39 @@ impl RecordPoolCard {
     // Physical <-> digital link
     // ------------------------------------------------------------------
 
-    /// Proves a physical card is genuine. The verifier generates a fresh
-    /// random `challenge`, the card's secure element signs it
-    /// (ECDSA P-256 over SHA-256), and the contract verifies the signature
-    /// against the chip key bound to `token_id`. Panics if the signature is
-    /// invalid; otherwise returns the current on-chain owner.
+    /// Proves a physical card is genuine.
+    ///
+    /// RecordPool cards carry a HaLo NFC chip whose key slot 2 holds a
+    /// secp256k1 key that never leaves the chip. The verifier generates a fresh
+    /// random 32-byte `challenge` and has the chip sign it with libhalo's
+    /// `sign_challenge`, which signs
+    /// `SHA-256("\x19External chall pk2:\n" || challenge)`. The contract
+    /// recomputes that digest, recovers the signer with the native
+    /// `secp256k1_recover` host function, and checks it against the chip key
+    /// bound to `token_id`. Panics if it doesn't match; otherwise returns the
+    /// current on-chain owner.
+    ///
+    /// `signature` is r||s with a low S value and `recovery_id` is 0 or 1;
+    /// `halo-tool prepare` converts HaLo's DER output into that form.
     ///
     /// Read-only: call it via simulation, no transaction or fee required.
     pub fn authenticate(
         e: &Env,
         token_id: u32,
-        challenge: Bytes,
+        challenge: BytesN<32>,
         signature: BytesN<64>,
+        recovery_id: u32,
     ) -> Address {
         let pubkey = storage::get_chip_pubkey(e, token_id);
-        let digest = e.crypto().sha256(&challenge);
-        e.crypto().secp256r1_verify(&pubkey, &digest, &signature);
+        let mut msg = Bytes::from_slice(e, HALO_CHALLENGE_PREFIX);
+        msg.append(&challenge.into());
+        let digest = e.crypto().sha256(&msg);
+        let signer = e
+            .crypto()
+            .secp256k1_recover(&digest, &signature, recovery_id);
+        if signer != pubkey {
+            panic_with_error!(e, CardError::InvalidChipSignature);
+        }
         Self::owner_of(e, token_id)
     }
 

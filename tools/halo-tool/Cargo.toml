@@ -1,0 +1,13 @@
+[package]
+name = "halo-tool"
+description = "Simulates a HaLo NFC chip and converts real HaLo signatures into the format Soroban's secp256k1_recover expects"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+publish = false
+
+[dependencies]
+k256 = { workspace = true }
+sha2 = { workspace = true }
+rand_core = { version = "0.6", features = ["getrandom"] }
+hex = "0.4"

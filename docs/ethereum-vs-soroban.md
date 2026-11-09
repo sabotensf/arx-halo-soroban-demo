@@ -97,16 +97,29 @@ For an RWA this matters: a card's on-chain record has to stay live as long as th
 
 ## 6. Linking to the physical object
 
-Most NFC secure elements and phone enclaves sign with **P-256 (secp256r1)**.
+RecordPool cards carry **HaLo** NFC chips, which sign with **secp256k1**, the same curve as Ethereum accounts.
 
-- **Ethereum**: `ecrecover` handles secp256k1 only. Verifying P-256 needs the RIP-7212 / EIP-7951 precompile on chains that have it, or expensive Solidity math.
-- **Soroban**: `e.crypto().secp256r1_verify(...)` is a native host function. The contract checks a chip signature in three lines, and because `authenticate` doesn't write state, a wallet can call it as a **free simulation**:
+- **Ethereum**: `ecrecover` verifies HaLo signatures natively. This is how HaLo chips are normally used.
+- **Soroban**: `e.crypto().secp256k1_recover(...)` does the same job as a host function, so moving to Stellar doesn't mean changing chips. Soroban also has a native `secp256r1_verify`, the curve used by passkeys and most phone secure enclaves, so P-256 hardware would work too.
+
+The contract recomputes the digest a HaLo signs for `sign_challenge`, recovers the signer and compares it with the key bound to the token:
 
 ```rust
-let pubkey = storage::get_chip_pubkey(e, token_id);
-let digest = e.crypto().sha256(&challenge);
-e.crypto().secp256r1_verify(&pubkey, &digest, &signature);
+let mut msg = Bytes::from_slice(e, b"\x19External chall pk2:\n");
+msg.append(&challenge.into());
+let digest = e.crypto().sha256(&msg);
+let signer = e.crypto().secp256k1_recover(&digest, &signature, recovery_id);
+if signer != storage::get_chip_pubkey(e, token_id) { panic_with_error!(e, CardError::InvalidChipSignature); }
 ```
+
+Two practical differences from `ecrecover`:
+
+| | Ethereum `ecrecover` | Soroban `secp256k1_recover` |
+|---|---|---|
+| Returns | A 20-byte address (the zero address on failure) | The full 65-byte public key. Failure is a host error, not a silent zero. |
+| High-S signatures | Accepted by the precompile | **Rejected.** The client has to normalise S to the low half (and flip the recovery id). `halo-tool prepare` does this. |
+
+On both chains `authenticate` is a read-only call, so a wallet or the RecordPool app can run it without paying a fee.
 
 ## 7. Deploying and initializing
 
@@ -131,7 +144,7 @@ let sac = e.register_stellar_asset_contract_v2(issuer);
 StellarAssetClient::new(&e, &sac.address()).mint(&buyer, &(100 * USDC));
 ```
 
-The suite in [`test.rs`](../contracts/recordpool-card/src/test.rs) has 21 tests. They cover access control, atomic rollback when a buyer is short of funds, signatures from counterfeit and replayed chips, exact royalty splits, and listings that a transfer invalidates.
+The suite in [`test.rs`](../contracts/recordpool-card/src/test.rs) has 23 tests. They cover access control, atomic rollback when a buyer is short of funds, signatures from counterfeit and replayed chips, exact royalty splits, and listings that a transfer invalidates.
 
 ## Cheat sheet
 

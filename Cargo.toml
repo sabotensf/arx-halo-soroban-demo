@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["contracts/recordpool-card", "tools/chip-sim"]
+members = ["contracts/recordpool-card", "tools/halo-tool"]
 
 [workspace.package]
 edition = "2021"
@@ -12,7 +12,8 @@ soroban-sdk = "28.0.0"
 stellar-access = "0.8.0"
 stellar-macros = "0.8.0"
 stellar-tokens = "0.8.0"
-p256 = { version = "0.13.2", features = ["ecdsa"] }
+k256 = { version = "0.13.4", features = ["ecdsa"] }
+sha2 = "0.10"
 
 [profile.release]
 opt-level = "z"

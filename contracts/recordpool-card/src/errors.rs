@@ -25,4 +25,6 @@ pub enum CardError {
     RoyaltyExceedsPrice = 3007,
     /// The token has no chip bound to it.
     UnknownToken = 3008,
+    /// The chip signature doesn't recover to the key bound to this token.
+    InvalidChipSignature = 3009,
 }

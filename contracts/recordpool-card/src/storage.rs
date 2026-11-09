@@ -22,7 +22,7 @@ pub struct Config {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PendingCard {
-    /// Uncompressed SEC1 secp256r1 public key of the card's secure element.
+    /// Uncompressed SEC1 secp256k1 public key (HaLo key slot 2, `pk2`).
     pub chip_pubkey: BytesN<65>,
     /// Primary-sale price, in the payment token's smallest unit.
     pub price: i128,

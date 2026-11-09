@@ -1,21 +1,29 @@
 extern crate std;
 
-use p256::ecdsa::{signature::Signer, Signature, SigningKey};
+use k256::ecdsa::SigningKey;
+use sha2::{Digest, Sha256};
 use soroban_sdk::{
     testutils::{Address as _, AuthorizedFunction},
     token::{StellarAssetClient, TokenClient},
-    Address, Bytes, BytesN, Env, Error, IntoVal, String, Symbol,
+    Address, BytesN, Env, Error, IntoVal, String, Symbol,
 };
 
-use crate::{CardError, RecordPoolCard, RecordPoolCardClient};
+use crate::{contract::HALO_CHALLENGE_PREFIX, CardError, RecordPoolCard, RecordPoolCardClient};
 
 const USDC: i128 = 10_000_000; // 7 decimals, like the USDC Stellar asset
 const CARD_PRICE: i128 = 25 * USDC;
 const ROYALTY_BPS: u32 = 1_000; // 10%
 
-/// A simulated card secure element.
+/// A simulated HaLo chip (key slot 2, secp256k1).
 struct Chip {
     key: SigningKey,
+}
+
+/// What a verifier submits after a tap: low-S r||s plus recovery id.
+struct Tap {
+    challenge: [u8; 32],
+    signature: [u8; 64],
+    recovery_id: u32,
 }
 
 impl Chip {
@@ -33,11 +41,32 @@ impl Chip {
         BytesN::from_array(e, &point.as_bytes().try_into().unwrap())
     }
 
-    fn sign(&self, e: &Env, challenge: &[u8]) -> BytesN<64> {
-        let sig: Signature = self.key.sign(challenge);
-        let sig = sig.normalize_s().unwrap_or(sig);
-        BytesN::from_array(e, &sig.to_bytes().into())
+    /// HaLo `sign_challenge`: ECDSA over SHA-256(prefix || challenge).
+    fn sign_challenge(&self, challenge: [u8; 32]) -> Tap {
+        let digest: [u8; 32] = Sha256::new()
+            .chain_update(HALO_CHALLENGE_PREFIX)
+            .chain_update(challenge)
+            .finalize()
+            .into();
+        let (sig, rid) = self.key.sign_prehash_recoverable(&digest).unwrap();
+        Tap {
+            challenge,
+            signature: sig.to_bytes().into(),
+            recovery_id: rid.to_byte() as u32,
+        }
     }
+}
+
+fn authenticate(s: &Setup, token_id: u32, tap: &Tap) -> Result<Address, ()> {
+    s.card
+        .try_authenticate(
+            &token_id,
+            &BytesN::from_array(&s.e, &tap.challenge),
+            &BytesN::from_array(&s.e, &tap.signature),
+            &tap.recovery_id,
+        )
+        .map(|r| r.unwrap())
+        .map_err(|_| ())
 }
 
 struct Setup<'a> {
@@ -263,12 +292,8 @@ fn authenticate_genuine_card_returns_owner() {
     let buyer = funded(&s, CARD_PRICE);
     let token_id = register_and_buy(&s, &chip, &buyer);
 
-    let challenge = b"verifier-nonce-2026-11-08T15:00Z";
-    let sig = chip.sign(&s.e, challenge);
-    let owner = s
-        .card
-        .authenticate(&token_id, &Bytes::from_slice(&s.e, challenge), &sig);
-    assert_eq!(owner, buyer);
+    let tap = chip.sign_challenge([0xA5; 32]);
+    assert_eq!(authenticate(&s, token_id, &tap), Ok(buyer));
 }
 
 #[test]
@@ -278,12 +303,16 @@ fn authenticate_rejects_counterfeit_chip() {
     let counterfeit = Chip::new(2);
     let token_id = register_and_buy(&s, &genuine, &funded(&s, CARD_PRICE));
 
-    let challenge = b"verifier-nonce";
-    let sig = counterfeit.sign(&s.e, challenge);
-    assert!(s
-        .card
-        .try_authenticate(&token_id, &Bytes::from_slice(&s.e, challenge), &sig)
-        .is_err());
+    let tap = counterfeit.sign_challenge([0xA5; 32]);
+    assert_eq!(
+        s.card.try_authenticate(
+            &token_id,
+            &BytesN::from_array(&s.e, &tap.challenge),
+            &BytesN::from_array(&s.e, &tap.signature),
+            &tap.recovery_id,
+        ),
+        Err(Ok(contract_err(CardError::InvalidChipSignature)))
+    );
 }
 
 #[test]
@@ -292,15 +321,39 @@ fn authenticate_rejects_replayed_signature_on_new_challenge() {
     let chip = Chip::new(1);
     let token_id = register_and_buy(&s, &chip, &funded(&s, CARD_PRICE));
 
-    let old_sig = chip.sign(&s.e, b"yesterday's challenge");
-    assert!(s
-        .card
-        .try_authenticate(
-            &token_id,
-            &Bytes::from_slice(&s.e, b"today's challenge"),
-            &old_sig
-        )
-        .is_err());
+    let mut tap = chip.sign_challenge([1; 32]); // yesterday's challenge
+    tap.challenge = [2; 32]; // today's
+    assert!(authenticate(&s, token_id, &tap).is_err());
+}
+
+#[test]
+fn authenticate_rejects_wrong_recovery_id() {
+    let s = setup();
+    let chip = Chip::new(1);
+    let token_id = register_and_buy(&s, &chip, &funded(&s, CARD_PRICE));
+
+    let mut tap = chip.sign_challenge([3; 32]);
+    tap.recovery_id ^= 1;
+    assert!(authenticate(&s, token_id, &tap).is_err());
+}
+
+#[test]
+fn authenticate_rejects_raw_digest_signature() {
+    // A signature over the bare challenge (no HaLo domain prefix), e.g. from a
+    // slot that signs arbitrary digests, must not authenticate.
+    let s = setup();
+    let chip = Chip::new(1);
+    let token_id = register_and_buy(&s, &chip, &funded(&s, CARD_PRICE));
+
+    let challenge = [4u8; 32];
+    let digest: [u8; 32] = Sha256::digest(challenge).into();
+    let (sig, rid) = chip.key.sign_prehash_recoverable(&digest).unwrap();
+    let tap = Tap {
+        challenge,
+        signature: sig.to_bytes().into(),
+        recovery_id: rid.to_byte() as u32,
+    };
+    assert!(authenticate(&s, token_id, &tap).is_err());
 }
 
 // -------------------------------------------------------- secondary market
@@ -418,12 +471,7 @@ fn authenticate_follows_ownership_after_resale() {
     s.card.list(&alice, &token_id, &(30 * USDC));
     s.card.buy(&bob, &token_id);
 
-    let challenge = b"post-resale check";
-    let owner = s.card.authenticate(
-        &token_id,
-        &Bytes::from_slice(&s.e, challenge),
-        &chip.sign(&s.e, challenge),
-    );
+    let owner = authenticate(&s, token_id, &chip.sign_challenge([0x5E; 32])).unwrap();
     assert_eq!(owner, bob);
 }
 

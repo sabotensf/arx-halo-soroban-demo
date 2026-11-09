@@ -7,11 +7,11 @@ ALICE="${ALICE:-rp-alice}"
 BOB="${BOB:-rp-bob}"
 PRICE=50000000          # 5 USDC (7 decimals)
 RESALE=80000000         # 8 USDC
-CHIP_SIM="$ROOT/target/release/chip-sim"
+HALO="$ROOT/target/release/halo-tool"
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
 
 [ -f "$DEPLOYMENT_FILE" ] || { echo "run scripts/deploy-testnet.sh first"; exit 1; }
-(cd "$ROOT" && cargo build --release -p chip-sim -q)
+(cd "$ROOT" && cargo build --release -p halo-tool -q)
 
 step "Identities + testnet USDC (swapped from friendbot XLM on the DEX)"
 for k in "$ALICE" "$BOB"; do ensure_key "$k"; done
@@ -19,9 +19,10 @@ fund_usdc "$ALICE" 60000000    # 6 USDC
 fund_usdc "$BOB"   100000000   # 10 USDC
 echo "alice USDC: $(usdc_balance "$ALICE")   bob USDC: $(usdc_balance "$BOB")"
 
-step "1. Manufacture: the card's secure element generates a P-256 key pair"
-PUBKEY="$("$CHIP_SIM" keygen "$WORK/card.key")"
-echo "chip pubkey: $PUBKEY"
+step "1. Card's HaLo chip: read its slot-2 public key (pk2, secp256k1)"
+# Real card: libhalo get_pkeys -> publicKeys["2"]. Here: a simulated chip.
+PUBKEY="$("$HALO" sim-keygen "$WORK/card.key")"
+echo "pk2: $PUBKEY"
 
 step "2. Issuer registers the card for sale at 5 USDC"
 CHIP_ID="$(invoke "$ADMIN" register_card --chip_pubkey "$PUBKEY" --price "$PRICE" --operator "$(stellar keys address "$ADMIN")" | tr -d '"')"
@@ -32,12 +33,16 @@ TOKEN_ID="$(invoke "$ALICE" purchase --buyer "$(stellar keys address "$ALICE")" 
 echo "token_id: $TOKEN_ID   owner: $(view owner_of --token_id "$TOKEN_ID")"
 
 step "4. Tap to verify: chip signs a fresh challenge, contract checks it (read-only)"
-CHALLENGE="$("$CHIP_SIM" challenge)"
-SIG="$("$CHIP_SIM" sign "$WORK/card.key" "$CHALLENGE")"
-echo "authenticate -> owner $(view authenticate --token_id "$TOKEN_ID" --challenge "$CHALLENGE" --signature "$SIG")"
-"$CHIP_SIM" keygen "$WORK/fake.key" >/dev/null
-FAKE_SIG="$("$CHIP_SIM" sign "$WORK/fake.key" "$CHALLENGE")"
-if view authenticate --token_id "$TOKEN_ID" --challenge "$CHALLENGE" --signature "$FAKE_SIG" >/dev/null 2>&1; then
+CHALLENGE="$("$HALO" challenge)"
+# Real card: libhalo sign_challenge {challenge} -> DER signature.
+DER="$("$HALO" sim-sign-challenge "$WORK/card.key" "$CHALLENGE")"
+read -r SIG RID <<<"$("$HALO" prepare "$PUBKEY" "$CHALLENGE" "$DER")"
+echo "authenticate -> owner $(view authenticate --token_id "$TOKEN_ID" --challenge "$CHALLENGE" --signature "$SIG" --recovery_id "$RID")"
+"$HALO" sim-keygen "$WORK/fake.key" >/dev/null
+FAKE_DER="$("$HALO" sim-sign-challenge "$WORK/fake.key" "$CHALLENGE")"
+FAKE_PK="$("$HALO" sim-pubkey "$WORK/fake.key")"
+read -r FAKE_SIG FAKE_RID <<<"$("$HALO" prepare "$FAKE_PK" "$CHALLENGE" "$FAKE_DER")"
+if view authenticate --token_id "$TOKEN_ID" --challenge "$CHALLENGE" --signature "$FAKE_SIG" --recovery_id "$FAKE_RID" >/dev/null 2>&1; then
   echo "counterfeit accepted?!"; exit 1
 else
   echo "counterfeit chip -> rejected ✓"

@@ -1,6 +1,6 @@
 [package]
 name = "recordpool-card"
-description = "RWA-backed NFT for RecordPool NFC tap-to-play music cards, built on OpenZeppelin Stellar Contracts"
+description = "RWA-backed NFT for RecordPool NFC tap-to-play music cards (HaLo chips), built on OpenZeppelin Stellar Contracts"
 edition.workspace = true
 license.workspace = true
 version.workspace = true
@@ -18,4 +18,5 @@ stellar-tokens = { workspace = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
-p256 = { workspace = true }
+k256 = { workspace = true }
+sha2 = { workspace = true }
