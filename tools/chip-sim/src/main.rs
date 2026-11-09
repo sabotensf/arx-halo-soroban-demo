@@ -1,5 +1,5 @@
 //! `chip-sim` — a stand-in for the secp256r1 secure element embedded in a
-//! RecordPool chipped card (e.g. an NXP NTAG 424 / JavaCard-class chip).
+//! RecordPool tap-to-play music card (e.g. an NXP NTAG 424 / JavaCard-class chip).
 //!
 //! ```text
 //! chip-sim keygen <card.key>                 # "manufacture" a card

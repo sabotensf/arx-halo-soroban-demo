@@ -1,6 +1,6 @@
 [package]
 name = "recordpool-card"
-description = "RWA-backed NFT for RecordPool NFC-chipped cards, built on OpenZeppelin Stellar Contracts"
+description = "RWA-backed NFT for RecordPool NFC tap-to-play music cards, built on OpenZeppelin Stellar Contracts"
 edition.workspace = true
 license.workspace = true
 version.workspace = true

@@ -1,7 +1,7 @@
 //! # RecordPool Chipped Card — an RWA-backed NFT on Soroban
 //!
-//! Every physical RecordPool card carries an NFC secure element holding a
-//! secp256r1 (P-256) key pair. This contract binds each card's chip to exactly
+//! A RecordPool card is an NFC chip card you tap on a phone to play music.
+//! Each card's chip holds a secp256r1 (P-256) key pair. This contract binds each card's chip to exactly
 //! one on-chain token and adds the commerce logic around it:
 //!
 //! * **Primary sale** — the issuer registers a card's chip public key and a

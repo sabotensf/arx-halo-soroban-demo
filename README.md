@@ -1,6 +1,7 @@
 # RecordPool Chipped Card — an RWA-backed NFT on Stellar Soroban
 
-Every physical **RecordPool card** has an NFC secure element with its own P-256 key pair.
+A **RecordPool card** is an NFC chip card for music: tap it on a phone and it plays.
+Each card's chip also holds its own P-256 key pair.
 This Soroban contract gives each card exactly one on-chain token, sells it for **USDC**,
 lets anyone holding the card **prove on-chain that it's genuine**, and **enforces a royalty** when it's resold.
 
@@ -19,11 +20,11 @@ This repo only adds the RecordPool-specific logic: binding chips to tokens, USDC
 
 ## Why this use case
 
-Stellar is built for payments, stablecoins and real-world assets. A chipped collectible card touches all three:
+Stellar is built for payments, stablecoins and real-world assets. A tap-to-play music card touches all three:
 
-- **RWA**: the token is only worth something because a specific physical object exists. The chip's public key is stored on-chain, so the token and the card are cryptographically linked.
+- **RWA**: the token stands for a specific physical card. The chip's public key is stored on-chain, so the token and the card are cryptographically linked. The NFC tap that plays the music can also have the chip sign a challenge, which proves the card is genuine.
 - **Stablecoin payments**: both the primary sale and resales settle in USDC through its Stellar Asset Contract (SAC). It's the same USDC that classic Stellar accounts, anchors and wallets already hold.
-- **Programmable commerce**: the royalty is paid out inside the resale transaction. It isn't left to a marketplace to honour.
+- **Programmable commerce**: the royalty is paid out inside the resale transaction. It isn't left to a marketplace to honour. A royalty can be set per card, so resales of an artist's card can pay that artist.
 
 ## Architecture
 

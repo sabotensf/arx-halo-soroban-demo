@@ -1,6 +1,6 @@
 [package]
 name = "chip-sim"
-description = "Simulates the secp256r1 secure element inside a RecordPool chipped card"
+description = "Simulates the secp256r1 secure element inside a RecordPool tap-to-play music card"
 edition.workspace = true
 license.workspace = true
 version.workspace = true
