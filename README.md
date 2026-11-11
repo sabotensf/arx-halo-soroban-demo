@@ -5,7 +5,7 @@
 A **RecordPool card** is an NFC chip card for music: tap it on a phone and it plays.
 Each card carries a [HaLo](https://github.com/arx-research/libhalo) NFC chip with its own secp256k1 key pair, which can't be read out or copied.
 This Soroban contract gives each card exactly one on-chain token, sells it for **USDC**,
-lets anyone holding the card **prove on-chain that it's genuine**, and **enforces a royalty** when it's resold.
+lets anyone holding the card **prove on-chain that it's genuine**, and **pays a royalty** when it's resold through its marketplace.
 
 It's built on [OpenZeppelin Stellar Contracts](https://github.com/OpenZeppelin/stellar-contracts) v0.8.0.
 The token standard, enumeration, royalty bookkeeping and role-based access control come from that audited library.
