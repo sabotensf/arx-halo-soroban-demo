@@ -18,12 +18,25 @@ pub struct Config {
     pub treasury: Address,
 }
 
+/// The NFC chip embedded in a card, and therefore how a tap is verified.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Chip {
+    /// Arx HaLo: uncompressed SEC1 secp256k1 public key (key slot 2, `pk2`).
+    /// Taps are verified on-chain by [`authenticate`](crate::RecordPoolCard::authenticate).
+    Halo(BytesN<65>),
+    /// NXP NTAG 424 DNA: taps carry an AES-CMAC that only the holder of the
+    /// chip's secret keys can check, so a `verifier` checks them off-chain and
+    /// reports them with [`attest_tap`](crate::RecordPoolCard::attest_tap).
+    /// Nothing about the chip is stored besides its `chip_id`.
+    Ntag424,
+}
+
 /// A card registered by the issuer that has not been sold yet.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PendingCard {
-    /// Uncompressed SEC1 secp256k1 public key (HaLo key slot 2, `pk2`).
-    pub chip_pubkey: BytesN<65>,
+    pub chip: Chip,
     /// Primary-sale price, in the payment token's smallest unit.
     pub price: i128,
 }
@@ -43,8 +56,10 @@ pub enum CardKey {
     Pending(BytesN<32>),
     /// chip_id -> token_id (sold and minted)
     ChipToken(BytesN<32>),
-    /// token_id -> chip public key
+    /// token_id -> Chip
     TokenChip(u32),
+    /// token_id -> highest NTAG 424 tap counter attested so far
+    TapCounter(u32),
     /// token_id -> Listing
     Listing(u32),
 }
@@ -91,7 +106,7 @@ pub fn get_pending(e: &Env, chip_id: &BytesN<32>) -> Option<PendingCard> {
 }
 
 /// Moves a card from "pending" to "minted" and binds chip <-> token.
-pub fn bind_chip(e: &Env, chip_id: &BytesN<32>, chip_pubkey: &BytesN<65>, token_id: u32) {
+pub fn bind_chip(e: &Env, chip_id: &BytesN<32>, chip: &Chip, token_id: u32) {
     let p = e.storage().persistent();
     p.remove(&CardKey::Pending(chip_id.clone()));
 
@@ -100,7 +115,7 @@ pub fn bind_chip(e: &Env, chip_id: &BytesN<32>, chip_pubkey: &BytesN<65>, token_
     bump(e, &chip_key);
 
     let token_key = CardKey::TokenChip(token_id);
-    p.set(&token_key, chip_pubkey);
+    p.set(&token_key, chip);
     bump(e, &token_key);
 }
 
@@ -113,13 +128,23 @@ pub fn get_token_for_chip(e: &Env, chip_id: &BytesN<32>) -> Option<u32> {
     token
 }
 
-pub fn get_chip_pubkey(e: &Env, token_id: u32) -> BytesN<65> {
+pub fn get_chip(e: &Env, token_id: u32) -> Chip {
     let key = CardKey::TokenChip(token_id);
-    let Some(pubkey) = e.storage().persistent().get(&key) else {
+    let Some(chip) = e.storage().persistent().get(&key) else {
         panic_with_error!(e, CardError::UnknownToken);
     };
     bump(e, &key);
-    pubkey
+    chip
+}
+
+pub fn get_tap_counter(e: &Env, token_id: u32) -> Option<u32> {
+    e.storage().persistent().get(&CardKey::TapCounter(token_id))
+}
+
+pub fn set_tap_counter(e: &Env, token_id: u32, counter: u32) {
+    let key = CardKey::TapCounter(token_id);
+    e.storage().persistent().set(&key, &counter);
+    bump(e, &key);
 }
 
 pub fn set_listing(e: &Env, token_id: u32, listing: &Listing) {
