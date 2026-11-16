@@ -54,14 +54,3 @@ pub struct CardResold {
     pub royalty_receiver: Address,
     pub royalty: i128,
 }
-
-/// A verifier confirmed a genuine NTAG 424 DNA tap.
-#[contractevent]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct TapAttested {
-    #[topic]
-    pub token_id: u32,
-    pub verifier: Address,
-    pub counter: u32,
-    pub owner: Address,
-}

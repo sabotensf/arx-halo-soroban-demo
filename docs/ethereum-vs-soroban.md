@@ -97,7 +97,7 @@ For an RWA this matters: a card's on-chain record has to stay live as long as th
 
 ## 6. Linking to the physical object
 
-This demo supports two kinds of NFC chip. **HaLo** chips sign with **secp256k1**, the same curve as Ethereum accounts. **NTAG 424 DNA** chips use secret AES keys instead (covered at the end of this section).
+RecordPool cards carry **HaLo** NFC chips, which sign with **secp256k1**, the same curve as Ethereum accounts.
 
 - **Ethereum**: `ecrecover` verifies HaLo signatures natively. This is how HaLo chips are normally used.
 - **Soroban**: `e.crypto().secp256k1_recover(...)` does the same job as a host function, so moving to Stellar doesn't mean changing chips. Soroban also has a native `secp256r1_verify`, the curve used by passkeys and most phone secure enclaves, so P-256 hardware would work too.
@@ -109,8 +109,7 @@ let mut msg = Bytes::from_slice(e, b"\x19External chall pk2:\n");
 msg.append(&challenge.into());
 let digest = e.crypto().sha256(&msg);
 let signer = e.crypto().secp256k1_recover(&digest, &signature, recovery_id);
-let Chip::Halo(pubkey) = storage::get_chip(e, token_id) else { panic_with_error!(e, CardError::WrongChipType) };
-if signer != pubkey { panic_with_error!(e, CardError::InvalidChipSignature); }
+if signer != storage::get_chip_pubkey(e, token_id) { panic_with_error!(e, CardError::InvalidChipSignature); }
 ```
 
 Two practical differences from `ecrecover`:
@@ -121,24 +120,6 @@ Two practical differences from `ecrecover`:
 | High-S signatures | Accepted by the precompile | **Rejected.** The client has to normalise S to the low half (and flip the recovery id). `halo-tool prepare` does this. |
 
 On both chains `authenticate` is a read-only call, so a wallet or the RecordPool app can run it without paying a fee.
-
-### Symmetric-key chips: NTAG 424 DNA
-
-An NTAG 424 DNA tap carries an AES-CMAC, and checking a MAC needs the same secret key that made it. A contract can't hold a secret, so **neither chain can verify these taps itself**. On Ethereum the usual answer is an oracle or attester, for example a backend that checks the tap and writes an EAS attestation. This contract uses the same trust model with Soroban's tools:
-
-```rust
-#[only_role(verifier, "verifier")]   // OZ AccessControl: role check + verifier.require_auth()
-pub fn attest_tap(e: &Env, chip_id: BytesN<32>, counter: u32, verifier: Address) -> Address {
-    // …the token must be a sold NTAG 424 card…
-    if let Some(last) = storage::get_tap_counter(e, token_id) {
-        if counter <= last { panic_with_error!(e, CardError::StaleTapCounter); }
-    }
-    storage::set_tap_counter(e, token_id, counter);
-    // …emit TapAttested, return the owner
-}
-```
-
-The verifier is trusted to check the MAC, but the contract still enforces the part it can see: the chip's tap counter must go up, so the same tap URL can't be attested twice. Because Soroban auth is an explicit tree, the verifier can also sign just the `attest_tap` authorization entry and let someone else submit and pay for the transaction.
 
 ## 7. Deploying and initializing
 
@@ -163,7 +144,7 @@ let sac = e.register_stellar_asset_contract_v2(issuer);
 StellarAssetClient::new(&e, &sac.address()).mint(&buyer, &(100 * USDC));
 ```
 
-The suite in [`test.rs`](../contracts/recordpool-card/src/test.rs) has 29 tests. They cover access control, atomic rollback when a buyer is short of funds, signatures from counterfeit and replayed chips, NTAG tap attestation and counter replays, exact royalty splits, and listings that a transfer invalidates.
+The suite in [`test.rs`](../contracts/recordpool-card/src/test.rs) has 23 tests. They cover access control, atomic rollback when a buyer is short of funds, signatures from counterfeit and replayed chips, exact royalty splits, and listings that a transfer invalidates.
 
 ## Cheat sheet
 

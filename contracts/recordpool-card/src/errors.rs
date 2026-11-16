@@ -27,10 +27,4 @@ pub enum CardError {
     UnknownToken = 3008,
     /// The chip signature doesn't recover to the key bound to this token.
     InvalidChipSignature = 3009,
-    /// The call doesn't match the card's chip type (e.g. `authenticate` on an
-    /// NTAG 424 card, or `attest_tap` on a HaLo card).
-    WrongChipType = 3010,
-    /// The NTAG 424 tap counter isn't higher than the last attested one, so
-    /// the tap is a replay of an old one.
-    StaleTapCounter = 3011,
 }

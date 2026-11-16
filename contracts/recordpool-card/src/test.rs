@@ -8,16 +8,14 @@ use soroban_sdk::{
     Address, BytesN, Env, Error, IntoVal, String, Symbol,
 };
 
-use crate::{
-    contract::HALO_CHALLENGE_PREFIX, CardError, Chip, RecordPoolCard, RecordPoolCardClient,
-};
+use crate::{contract::HALO_CHALLENGE_PREFIX, CardError, RecordPoolCard, RecordPoolCardClient};
 
 const USDC: i128 = 10_000_000; // 7 decimals, like the USDC Stellar asset
 const CARD_PRICE: i128 = 25 * USDC;
 const ROYALTY_BPS: u32 = 1_000; // 10%
 
 /// A simulated HaLo chip (key slot 2, secp256k1).
-struct HaloChip {
+struct Chip {
     key: SigningKey,
 }
 
@@ -28,7 +26,7 @@ struct Tap {
     recovery_id: u32,
 }
 
-impl HaloChip {
+impl Chip {
     fn new(seed: u8) -> Self {
         let mut bytes = [0u8; 32];
         bytes[31] = seed;
@@ -126,7 +124,7 @@ fn contract_err(err: CardError) -> Error {
 }
 
 /// Registers a chip and has `buyer` purchase it. Returns token id.
-fn register_and_buy(s: &Setup, chip: &HaloChip, buyer: &Address) -> u32 {
+fn register_and_buy(s: &Setup, chip: &Chip, buyer: &Address) -> u32 {
     let chip_id = s
         .card
         .register_card(&chip.pubkey(&s.e), &CARD_PRICE, &s.admin);
@@ -152,7 +150,7 @@ fn metadata_and_roles() {
 #[test]
 fn purchase_pays_treasury_and_mints_bound_token() {
     let s = setup();
-    let chip = HaloChip::new(1);
+    let chip = Chip::new(1);
     let buyer = funded(&s, 100 * USDC);
 
     let chip_id = s
@@ -182,7 +180,7 @@ fn purchase_pays_treasury_and_mints_bound_token() {
     assert_eq!(s.card.total_supply(), 1);
     assert_eq!(s.card.get_owner_token_id(&buyer, &0), token_id);
     assert_eq!(s.card.token_for_chip(&chip_id), Some(token_id));
-    assert_eq!(s.card.chip(&token_id), Chip::Halo(chip.pubkey(&s.e)));
+    assert_eq!(s.card.chip_pubkey(&token_id), chip.pubkey(&s.e));
     assert_eq!(s.card.card_price(&chip_id), None);
     assert_eq!(
         s.card.token_uri(&token_id),
@@ -196,7 +194,7 @@ fn only_issuer_can_register() {
     let rando = Address::generate(&s.e);
     let res = s
         .card
-        .try_register_card(&HaloChip::new(1).pubkey(&s.e), &CARD_PRICE, &rando);
+        .try_register_card(&Chip::new(1).pubkey(&s.e), &CARD_PRICE, &rando);
     assert!(res.is_err());
 }
 
@@ -207,13 +205,13 @@ fn granted_issuer_can_register() {
     s.card
         .grant_role(&factory, &Symbol::new(&s.e, "issuer"), &s.admin);
     s.card
-        .register_card(&HaloChip::new(1).pubkey(&s.e), &CARD_PRICE, &factory);
+        .register_card(&Chip::new(1).pubkey(&s.e), &CARD_PRICE, &factory);
 }
 
 #[test]
 fn cannot_register_same_chip_twice() {
     let s = setup();
-    let pk = HaloChip::new(1).pubkey(&s.e);
+    let pk = Chip::new(1).pubkey(&s.e);
     s.card.register_card(&pk, &CARD_PRICE, &s.admin);
     assert_eq!(
         s.card.try_register_card(&pk, &CARD_PRICE, &s.admin),
@@ -224,7 +222,7 @@ fn cannot_register_same_chip_twice() {
 #[test]
 fn cannot_reregister_after_mint() {
     let s = setup();
-    let chip = HaloChip::new(1);
+    let chip = Chip::new(1);
     register_and_buy(&s, &chip, &funded(&s, CARD_PRICE));
     assert_eq!(
         s.card
@@ -238,7 +236,7 @@ fn rejects_non_positive_price() {
     let s = setup();
     assert_eq!(
         s.card
-            .try_register_card(&HaloChip::new(1).pubkey(&s.e), &0, &s.admin),
+            .try_register_card(&Chip::new(1).pubkey(&s.e), &0, &s.admin),
         Err(Ok(contract_err(CardError::InvalidPrice)))
     );
 }
@@ -257,7 +255,7 @@ fn purchase_unknown_chip_fails() {
 #[test]
 fn cannot_buy_same_card_twice() {
     let s = setup();
-    let chip = HaloChip::new(1);
+    let chip = Chip::new(1);
     let chip_id = s
         .card
         .register_card(&chip.pubkey(&s.e), &CARD_PRICE, &s.admin);
@@ -271,7 +269,7 @@ fn cannot_buy_same_card_twice() {
 #[test]
 fn underfunded_purchase_is_atomic() {
     let s = setup();
-    let chip = HaloChip::new(1);
+    let chip = Chip::new(1);
     let buyer = funded(&s, CARD_PRICE - 1);
     let chip_id = s
         .card
@@ -290,7 +288,7 @@ fn underfunded_purchase_is_atomic() {
 #[test]
 fn authenticate_genuine_card_returns_owner() {
     let s = setup();
-    let chip = HaloChip::new(1);
+    let chip = Chip::new(1);
     let buyer = funded(&s, CARD_PRICE);
     let token_id = register_and_buy(&s, &chip, &buyer);
 
@@ -301,8 +299,8 @@ fn authenticate_genuine_card_returns_owner() {
 #[test]
 fn authenticate_rejects_counterfeit_chip() {
     let s = setup();
-    let genuine = HaloChip::new(1);
-    let counterfeit = HaloChip::new(2);
+    let genuine = Chip::new(1);
+    let counterfeit = Chip::new(2);
     let token_id = register_and_buy(&s, &genuine, &funded(&s, CARD_PRICE));
 
     let tap = counterfeit.sign_challenge([0xA5; 32]);
@@ -320,7 +318,7 @@ fn authenticate_rejects_counterfeit_chip() {
 #[test]
 fn authenticate_rejects_replayed_signature_on_new_challenge() {
     let s = setup();
-    let chip = HaloChip::new(1);
+    let chip = Chip::new(1);
     let token_id = register_and_buy(&s, &chip, &funded(&s, CARD_PRICE));
 
     let mut tap = chip.sign_challenge([1; 32]); // yesterday's challenge
@@ -331,7 +329,7 @@ fn authenticate_rejects_replayed_signature_on_new_challenge() {
 #[test]
 fn authenticate_rejects_wrong_recovery_id() {
     let s = setup();
-    let chip = HaloChip::new(1);
+    let chip = Chip::new(1);
     let token_id = register_and_buy(&s, &chip, &funded(&s, CARD_PRICE));
 
     let mut tap = chip.sign_challenge([3; 32]);
@@ -344,7 +342,7 @@ fn authenticate_rejects_raw_digest_signature() {
     // A signature over the bare challenge (no HaLo domain prefix), e.g. from a
     // slot that signs arbitrary digests, must not authenticate.
     let s = setup();
-    let chip = HaloChip::new(1);
+    let chip = Chip::new(1);
     let token_id = register_and_buy(&s, &chip, &funded(&s, CARD_PRICE));
 
     let challenge = [4u8; 32];
@@ -361,11 +359,11 @@ fn authenticate_rejects_raw_digest_signature() {
 // -------------------------------------------------------- secondary market
 
 #[test]
-fn resale_pays_default_royalty() {
+fn resale_enforces_default_royalty() {
     let s = setup();
     let alice = funded(&s, CARD_PRICE);
     let bob = funded(&s, 100 * USDC);
-    let token_id = register_and_buy(&s, &HaloChip::new(1), &alice);
+    let token_id = register_and_buy(&s, &Chip::new(1), &alice);
     let treasury_after_primary = s.usdc.balance(&s.treasury);
 
     s.card.list(&alice, &token_id, &(80 * USDC));
@@ -392,7 +390,7 @@ fn resale_uses_token_specific_royalty() {
     let alice = funded(&s, CARD_PRICE);
     let bob = funded(&s, 100 * USDC);
     let artist = Address::generate(&s.e);
-    let token_id = register_and_buy(&s, &HaloChip::new(1), &alice);
+    let token_id = register_and_buy(&s, &Chip::new(1), &alice);
 
     // Limited-edition card: 5% to the featured artist instead.
     s.card.set_token_royalty(&token_id, &artist, &500, &s.admin);
@@ -408,7 +406,7 @@ fn only_owner_can_list() {
     let s = setup();
     let alice = funded(&s, CARD_PRICE);
     let mallory = Address::generate(&s.e);
-    let token_id = register_and_buy(&s, &HaloChip::new(1), &alice);
+    let token_id = register_and_buy(&s, &Chip::new(1), &alice);
     assert_eq!(
         s.card.try_list(&mallory, &token_id, &USDC),
         Err(Ok(contract_err(CardError::NotTokenOwner)))
@@ -421,7 +419,7 @@ fn transfer_invalidates_listing() {
     let alice = funded(&s, CARD_PRICE);
     let carol = Address::generate(&s.e);
     let bob = funded(&s, 100 * USDC);
-    let token_id = register_and_buy(&s, &HaloChip::new(1), &alice);
+    let token_id = register_and_buy(&s, &Chip::new(1), &alice);
 
     s.card.list(&alice, &token_id, &(10 * USDC));
     s.card.transfer(&alice, &carol, &token_id);
@@ -440,7 +438,7 @@ fn cancel_listing() {
     let s = setup();
     let alice = funded(&s, CARD_PRICE);
     let bob = funded(&s, 100 * USDC);
-    let token_id = register_and_buy(&s, &HaloChip::new(1), &alice);
+    let token_id = register_and_buy(&s, &Chip::new(1), &alice);
 
     s.card.list(&alice, &token_id, &(10 * USDC));
     s.card.cancel_listing(&alice, &token_id);
@@ -454,7 +452,7 @@ fn cancel_listing() {
 fn seller_cannot_buy_own_listing() {
     let s = setup();
     let alice = funded(&s, CARD_PRICE + 10 * USDC);
-    let token_id = register_and_buy(&s, &HaloChip::new(1), &alice);
+    let token_id = register_and_buy(&s, &Chip::new(1), &alice);
     s.card.list(&alice, &token_id, &(10 * USDC));
     assert_eq!(
         s.card.try_buy(&alice, &token_id),
@@ -465,7 +463,7 @@ fn seller_cannot_buy_own_listing() {
 #[test]
 fn authenticate_follows_ownership_after_resale() {
     let s = setup();
-    let chip = HaloChip::new(1);
+    let chip = Chip::new(1);
     let alice = funded(&s, CARD_PRICE);
     let bob = funded(&s, 100 * USDC);
     let token_id = register_and_buy(&s, &chip, &alice);
@@ -482,140 +480,11 @@ fn enumerates_multiple_cards() {
     let s = setup();
     let alice = funded(&s, 3 * CARD_PRICE);
     let ids: std::vec::Vec<u32> = (1..=3)
-        .map(|i| register_and_buy(&s, &HaloChip::new(i), &alice))
+        .map(|i| register_and_buy(&s, &Chip::new(i), &alice))
         .collect();
     assert_eq!(s.card.total_supply(), 3);
     assert_eq!(s.card.balance(&alice), 3);
     for (i, id) in ids.iter().enumerate() {
         assert_eq!(s.card.get_owner_token_id(&alice, &(i as u32)), *id);
     }
-}
-
-// --------------------------------------------------------------- NTAG 424
-
-/// `chip_id` of an NTAG 424 DNA card: SHA-256 of its 7-byte UID.
-fn ntag_chip_id(e: &Env, uid: [u8; 7]) -> BytesN<32> {
-    BytesN::from_array(e, &Sha256::digest(uid).into())
-}
-
-/// Grants the `verifier` role to a fresh account (the tap-checking backend).
-fn verifier(s: &Setup) -> Address {
-    let v = Address::generate(&s.e);
-    s.card
-        .grant_role(&v, &Symbol::new(&s.e, "verifier"), &s.admin);
-    v
-}
-
-/// Registers an NTAG 424 card and has `buyer` purchase it. Returns chip id
-/// and token id.
-fn register_and_buy_ntag(s: &Setup, uid: [u8; 7], buyer: &Address) -> (BytesN<32>, u32) {
-    let chip_id = ntag_chip_id(&s.e, uid);
-    s.card.register_ntag_card(&chip_id, &CARD_PRICE, &s.admin);
-    let token_id = s.card.purchase(buyer, &chip_id);
-    (chip_id, token_id)
-}
-
-const UID: [u8; 7] = [0x04, 0xDE, 0x5F, 0x1E, 0xAC, 0xC0, 0x40];
-
-#[test]
-fn ntag_card_sale_and_attested_tap() {
-    let s = setup();
-    let alice = funded(&s, CARD_PRICE);
-    let v = verifier(&s);
-    let (chip_id, token_id) = register_and_buy_ntag(&s, UID, &alice);
-
-    assert_eq!(s.card.chip(&token_id), Chip::Ntag424);
-    assert_eq!(s.usdc.balance(&s.treasury), CARD_PRICE);
-    assert_eq!(s.card.last_tap_counter(&token_id), None);
-
-    assert_eq!(s.card.attest_tap(&chip_id, &61, &v), alice);
-
-    // Only the verifier signed the attestation.
-    let auths = s.e.auths();
-    assert_eq!(auths.len(), 1);
-    assert_eq!(auths[0].0, v);
-
-    assert_eq!(s.card.last_tap_counter(&token_id), Some(61));
-}
-
-#[test]
-fn attest_tap_rejects_replayed_counter() {
-    let s = setup();
-    let v = verifier(&s);
-    let (chip_id, _) = register_and_buy_ntag(&s, UID, &funded(&s, CARD_PRICE));
-
-    s.card.attest_tap(&chip_id, &10, &v);
-    for stale in [10, 9, 0] {
-        assert_eq!(
-            s.card.try_attest_tap(&chip_id, &stale, &v),
-            Err(Ok(contract_err(CardError::StaleTapCounter)))
-        );
-    }
-    // Counters may skip (taps that never reached the verifier).
-    s.card.attest_tap(&chip_id, &15, &v);
-}
-
-#[test]
-fn only_verifier_can_attest() {
-    let s = setup();
-    let (chip_id, _) = register_and_buy_ntag(&s, UID, &funded(&s, CARD_PRICE));
-    // Not even the admin/issuer: attesting needs the verifier role.
-    assert!(s.card.try_attest_tap(&chip_id, &1, &s.admin).is_err());
-    assert!(s
-        .card
-        .try_attest_tap(&chip_id, &1, &Address::generate(&s.e))
-        .is_err());
-}
-
-#[test]
-fn attest_tap_requires_sold_ntag_card() {
-    let s = setup();
-    let v = verifier(&s);
-
-    // Registered but unsold.
-    let unsold = ntag_chip_id(&s.e, UID);
-    s.card.register_ntag_card(&unsold, &CARD_PRICE, &s.admin);
-    assert_eq!(
-        s.card.try_attest_tap(&unsold, &1, &v),
-        Err(Ok(contract_err(CardError::UnknownToken)))
-    );
-
-    // A HaLo card can't be attested: it must prove itself with a signature.
-    let halo = HaloChip::new(1);
-    register_and_buy(&s, &halo, &funded(&s, CARD_PRICE));
-    let halo_id = BytesN::from_array(&s.e, &Sha256::digest(halo.pubkey(&s.e).to_array()).into());
-    assert_eq!(
-        s.card.try_attest_tap(&halo_id, &1, &v),
-        Err(Ok(contract_err(CardError::WrongChipType)))
-    );
-}
-
-#[test]
-fn authenticate_rejects_ntag_card() {
-    let s = setup();
-    let (_, token_id) = register_and_buy_ntag(&s, UID, &funded(&s, CARD_PRICE));
-    let tap = HaloChip::new(1).sign_challenge([1; 32]);
-    assert_eq!(
-        s.card.try_authenticate(
-            &token_id,
-            &BytesN::from_array(&s.e, &tap.challenge),
-            &BytesN::from_array(&s.e, &tap.signature),
-            &tap.recovery_id,
-        ),
-        Err(Ok(contract_err(CardError::WrongChipType)))
-    );
-}
-
-#[test]
-fn attest_tap_follows_ownership_after_resale() {
-    let s = setup();
-    let v = verifier(&s);
-    let alice = funded(&s, CARD_PRICE);
-    let bob = funded(&s, 100 * USDC);
-    let (chip_id, token_id) = register_and_buy_ntag(&s, UID, &alice);
-
-    s.card.attest_tap(&chip_id, &1, &v);
-    s.card.list(&alice, &token_id, &(30 * USDC));
-    s.card.buy(&bob, &token_id);
-    assert_eq!(s.card.attest_tap(&chip_id, &2, &v), bob);
 }

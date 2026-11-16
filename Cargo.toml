@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["contracts/recordpool-card", "tools/halo-tool", "tools/ntag-tool"]
+members = ["contracts/recordpool-card", "tools/halo-tool"]
 
 [workspace.package]
 edition = "2021"
