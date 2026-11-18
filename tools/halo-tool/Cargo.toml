@@ -1,6 +1,6 @@
 [package]
 name = "halo-tool"
-description = "Simulates a HaLo NFC chip and converts real HaLo signatures into the format Soroban's secp256k1_recover expects"
+description = "Chip ids, SEP-53 digests and a simulated HaLo chip (key slot 1, secp256k1) for the Soroban Physical Backed Token contract"
 edition.workspace = true
 license.workspace = true
 version.workspace = true

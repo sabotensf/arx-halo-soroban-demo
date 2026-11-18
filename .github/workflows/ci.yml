@@ -22,8 +22,8 @@ jobs:
             | tar xz -C /usr/local/bin stellar
           stellar --version
       - name: Build WASM
-        run: stellar contract build --package recordpool-card
+        run: stellar contract build --package recordpool-smart-card
       - uses: actions/upload-artifact@v4
         with:
-          name: recordpool_card.wasm
-          path: target/wasm32v1-none/release/recordpool_card.wasm
+          name: recordpool_smart_card.wasm
+          path: target/wasm32v1-none/release/recordpool_smart_card.wasm

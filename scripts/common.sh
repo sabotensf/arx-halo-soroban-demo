@@ -8,7 +8,7 @@ export USDC_ASSET="USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
 export ADMIN="${ADMIN:-rp-admin}"
 export ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export DEPLOYMENT_FILE="$ROOT/deployments/$NETWORK.json"
-export WASM="$ROOT/target/wasm32v1-none/release/recordpool_card.wasm"
+export WASM="$ROOT/target/wasm32v1-none/release/recordpool_smart_card.wasm"
 
 step() { printf '\n\033[1;36m▶ %s\033[0m\n' "$*"; }
 

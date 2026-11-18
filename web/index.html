@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RecordPool Smart Card</title>
+<!--
+  Tap-to-play page. A plain tap on a HaLo card opens the URL programmed into
+  the chip, with the chip's public key appended (`pk1`, or the `static` blob).
+  This page derives chip_id = SHA-256(uncompressed public key), asks the
+  RecordPoolSmartCard contract for the card's music URL (a free, read-only
+  simulation: no wallet, no transaction), and plays it.
+
+  Query parameters:
+    pk1=<hex>        key-slot-1 public key, as a HaLo tap URL carries it
+    static=<hex>     HaLo "static" blob of length-prefixed public keys
+    chip=<hex>       chip_id directly (for testing without a card)
+    contract=<C…>    contract id (defaults to the testnet deployment below)
+-->
+<style>
+  :root {
+    --bg: #f7f5f2; --card: #ffffff; --ink: #1d1b19; --muted: #6b665f;
+    --line: #e4e0da; --accent: #3a5bd9; --bad: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #151413; --card: #1f1e1c; --ink: #f1eee9; --muted: #a39d94;
+      --line: #34312d; --accent: #8ea6ff; --bad: #f2b8b5;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: grid; place-items: center;
+    background: var(--bg); color: var(--ink); padding: 16px;
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main {
+    width: 100%; max-width: 420px; background: var(--card);
+    border: 1px solid var(--line); border-radius: 16px; padding: 28px 24px;
+  }
+  .label { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px; }
+  h1 { font-size: 24px; margin: 0 0 16px; }
+  p { margin: 0 0 12px; }
+  audio { width: 100%; margin: 8px 0 16px; }
+  .meta { font-size: 13px; color: var(--muted); word-break: break-all; }
+  .meta code { font-size: 12px; }
+  .error { color: var(--bad); }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <p class="label">RecordPool card</p>
+  <h1 id="title">Reading the card…</h1>
+  <div id="body"><p>Looking up this card on Stellar.</p></div>
+  <p class="meta" id="meta"></p>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@stellar/stellar-sdk@14.6.1/dist/stellar-sdk.min.js"></script>
+<script>
+// ---- config -----------------------------------------------------------
+const DEFAULT_CONTRACT = "CATZY4YXXBLAQIUTLYVCYEC5RM7YKHHZQBEFA64QMLRDGGDY3XRJCCT2";
+const RPC_URL = "https://soroban-testnet.stellar.org";
+const USDC_DECIMALS = 7;
+// Source account for read-only simulations (the SDK's own NULL_ACCOUNT).
+const NULL_ACCOUNT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
+
+// ---- chip id from the tap URL ----------------------------------------
+const hexToBytes = (h) => {
+  h = h.trim().replace(/^0x/, "");
+  if (!/^([0-9a-fA-F]{2})+$/.test(h)) throw new Error("not hex");
+  return Uint8Array.from(h.match(/../g), (b) => parseInt(b, 16));
+};
+const bytesToHex = (b) => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+
+// secp256k1: decompress a 33-byte key to the 65-byte form the contract hashes.
+const P = 2n ** 256n - 2n ** 32n - 977n;
+const modPow = (b, e, m) => { let r = 1n; b %= m; for (; e > 0n; e >>= 1n, b = (b * b) % m) if (e & 1n) r = (r * b) % m; return r; };
+function uncompressed(key) {
+  if (key.length === 65 && key[0] === 4) return key;
+  if (key.length !== 33 || (key[0] !== 2 && key[0] !== 3)) throw new Error("unexpected public key length");
+  const x = BigInt("0x" + bytesToHex(key.slice(1)));
+  let y = modPow((x ** 3n + 7n) % P, (P + 1n) / 4n, P);
+  if ((y & 1n) !== BigInt(key[0] & 1)) y = P - y;
+  return hexToBytes("04" + bytesToHex(key.slice(1)) + y.toString(16).padStart(64, "0"));
+}
+
+// HaLo "static" blob: [len][key][len][key]…, key 1 first.
+function firstKeyFromStatic(blob) {
+  const len = blob[0];
+  if (!len) throw new Error("empty static blob");
+  return blob.slice(1, 1 + len);
+}
+
+async function chipIdFrom(params) {
+  if (params.get("chip")) {
+    const id = hexToBytes(params.get("chip"));
+    if (id.length !== 32) throw new Error("chip_id must be 32 bytes (64 hex characters)");
+    return id;
+  }
+  let key;
+  if (params.get("pk1")) key = hexToBytes(params.get("pk1"));
+  else if (params.get("static")) key = firstKeyFromStatic(hexToBytes(params.get("static")));
+  else throw new Error("This link has no card key. Tap the card again.");
+  const digest = await crypto.subtle.digest("SHA-256", uncompressed(key));
+  return new Uint8Array(digest);
+}
+
+// ---- read-only contract calls (simulation, no wallet) -----------------
+async function view(contractId, fn, ...args) {
+  const S = StellarSdk;
+  const server = new S.rpc.Server(RPC_URL);
+  const tx = new S.TransactionBuilder(new S.Account(NULL_ACCOUNT, "0"), {
+    fee: S.BASE_FEE, networkPassphrase: S.Networks.TESTNET,
+  }).addOperation(new S.Contract(contractId).call(fn, ...args)).setTimeout(30).build();
+  const sim = await server.simulateTransaction(tx);
+  if (S.rpc.Api.isSimulationError(sim)) {
+    const code = /Error\(Contract, #(\d+)\)/.exec(sim.error);
+    const err = new Error(code ? `contract error ${code[1]}` : sim.error);
+    err.code = code ? Number(code[1]) : null;
+    throw err;
+  }
+  return S.scValToNative(sim.result.retval);
+}
+
+const NO_MAPPED_TOKEN_FOR_CHIP = 3005;
+
+// ---- page --------------------------------------------------------------
+const $ = (id) => document.getElementById(id);
+function show(title, html, meta = "") {
+  $("title").textContent = title;
+  $("body").innerHTML = html;
+  $("meta").innerHTML = meta;
+}
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+const usdc = (units) => (Number(units) / 10 ** USDC_DECIMALS).toFixed(2);
+
+async function main() {
+  const params = new URLSearchParams(location.search);
+  const contractId = params.get("contract") || DEFAULT_CONTRACT;
+  let chipId;
+  try {
+    chipId = await chipIdFrom(params);
+  } catch (e) {
+    return show("Can't read this card", `<p class="error">${esc(e.message)}</p>`);
+  }
+  const chipArg = StellarSdk.nativeToScVal(chipId);
+  const meta = `chip <code>${bytesToHex(chipId).slice(0, 16)}…</code> · contract
+    <a href="https://stellar.expert/explorer/testnet/contract/${esc(contractId)}">${esc(contractId.slice(0, 8))}…</a>`;
+
+  try {
+    const url = await view(contractId, "music_url", chipArg);
+    if (!/^https?:\/\//i.test(url)) throw new Error("the card's music URL isn't http(s)");
+    show("Now playing",
+      `<audio controls autoplay preload="auto" src="${esc(url)}"></audio>
+       <p class="meta"><a href="${esc(url)}">${esc(url)}</a></p>`, meta);
+    // The lookup worked but the file itself may not load (moved, not pushed yet, offline).
+    $("body").querySelector("audio").addEventListener("error", () => show("Track unavailable",
+      `<p class="error">The card's track couldn't be loaded from:</p>
+       <p class="meta"><a href="${esc(url)}">${esc(url)}</a></p>`, meta));
+  } catch (e) {
+    if (e.code !== NO_MAPPED_TOKEN_FOR_CHIP) {
+      return show("Something went wrong", `<p class="error">${esc(e.message)}</p>`, meta);
+    }
+    // Not sold yet: show the price if the issuer has this card on sale.
+    try {
+      const price = await view(contractId, "card_price", chipArg);
+      if (price === null || price === undefined) {
+        show("Unknown card", "<p>This chip isn't registered as a RecordPool card.</p>", meta);
+      } else {
+        show("For sale", `<p>This card plays once it's bought: <strong>${usdc(price)} USDC</strong>.</p>`, meta);
+      }
+    } catch (e2) {
+      show("Something went wrong", `<p class="error">${esc(e2.message)}</p>`, meta);
+    }
+  }
+}
+
+if (typeof document !== "undefined") main();
+</script>
+</body>
+</html>

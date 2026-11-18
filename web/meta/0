@@ -1,0 +1,5 @@
+{
+  "name": "RecordPool Smart Card #0",
+  "description": "A RecordPool NFC music card on Stellar testnet. The token is a Physical Backed Token: only a tap of the card's HaLo chip can move it.",
+  "animation_url": "http://localhost:8000/star-dust.mp3"
+}

@@ -2,11 +2,11 @@
 # Builds the contract and deploys it to Stellar testnet, paid in Circle testnet USDC.
 source "$(dirname "$0")/common.sh"
 
-ROYALTY_BPS="${ROYALTY_BPS:-1000}"   # 10% default resale royalty
-BASE_URI="${BASE_URI:-https://cards.recordpool.io/meta/}"
+MAX_WINDOW="${MAX_WINDOW:-600}"      # seconds a chip signature stays valid
+BASE_URI="${BASE_URI:-http://localhost:8000/meta/}"   # token_uri = base + id, served from web/meta/
 
 step "Build"
-(cd "$ROOT" && stellar contract build --package recordpool-card >/dev/null)
+(cd "$ROOT" && stellar contract build --package recordpool-smart-card >/dev/null)
 stellar contract optimize --wasm "$WASM" --wasm-out "$WASM" >/dev/null 2>&1 || true
 ls -l "$WASM"
 
@@ -23,10 +23,10 @@ echo "USDC SAC: $USDC_SAC"
 # The treasury is a classic account, so it needs a USDC trustline to receive proceeds.
 stellar tx new change-trust --source-account "$ADMIN" --line "$USDC_ASSET" --network "$NETWORK" >/dev/null
 
-step "Deploy RecordPoolCard"
-CONTRACT_ID="$(stellar contract deploy --wasm "$WASM" --source-account "$ADMIN" --network "$NETWORK" --alias recordpool-card \
+step "Deploy RecordPoolSmartCard"
+CONTRACT_ID="$(stellar contract deploy --wasm "$WASM" --source-account "$ADMIN" --network "$NETWORK" --alias recordpool-smart-card \
   -- --admin "$ADMIN_ADDR" --payment_token "$USDC_SAC" --treasury "$ADMIN_ADDR" \
-     --royalty_bps "$ROYALTY_BPS" --base_uri "$BASE_URI" --name "RecordPool Card" --symbol RPCARD)"
+     --max_duration_window "$MAX_WINDOW" --base_uri "$BASE_URI" --name "RecordPool Smart Card" --symbol RPCARD)"
 WASM_HASH="$(stellar contract upload --wasm "$WASM" --source-account "$ADMIN" --network "$NETWORK" 2>/dev/null)"
 
 cat > "$DEPLOYMENT_FILE" <<JSON
@@ -38,7 +38,7 @@ cat > "$DEPLOYMENT_FILE" <<JSON
   "treasury": "$ADMIN_ADDR",
   "payment_token": "$USDC_SAC",
   "payment_asset": "$USDC_ASSET",
-  "royalty_bps": $ROYALTY_BPS,
+  "max_duration_window": $MAX_WINDOW,
   "deployed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 }
 JSON
