@@ -91,7 +91,7 @@ The biggest gap was a missing standard, so I drafted one: [a SEP for Physical Ba
 
 | Gap | What I did | What I'd ask for |
 | --- | --- | --- |
-| SEP-50 has no extension for chip-backed tokens | Drafted the interface, the message format over SEP-53, freshness rules, purpose tags, optional owner nonce rotation and security notes (v0.2.0) | Review as a SEP, so wallets and chip tooling can support any PBT contract |
+| SEP-50 has no extension for chip-backed tokens | Drafted the interface, the message format over SEP-53, freshness rules, purpose tags, optional owner nonce rotation and security notes | Review as a SEP, so wallets and chip tooling can support any PBT contract |
 | OpenZeppelin Stellar leaves contract-instance TTL to the contract | Extended the instance on every state change | A documented default or helper |
 | Testnet USDC needs its Stellar Asset Contract deployed per network | The deploy script deploys it and treats "already exists" (`ExistingValue`) as success | A note in the USDC testnet docs |
 

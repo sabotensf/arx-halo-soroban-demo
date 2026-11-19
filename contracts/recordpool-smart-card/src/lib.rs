@@ -28,6 +28,11 @@
 //! [OpenZeppelin Stellar Contracts](https://github.com/OpenZeppelin/stellar-contracts).
 #![no_std]
 
+// SEP-47 interface discovery: the SEPs this contract implements. The PBT
+// extension (docs/sep-draft-physical-backed-tokens.md) joins the list once it
+// has a SEP number.
+soroban_sdk::contractmeta!(key = "sep", val = "50");
+
 mod contract;
 mod errors;
 mod events;

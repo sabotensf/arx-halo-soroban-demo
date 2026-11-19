@@ -1,19 +1,15 @@
 ## Preamble
 
 ```
-SEP: To be assigned
+SEP: To Be Assigned
 Title: Physical Backed Tokens (Non-Fungible Token Extension)
-Author: David Geddes
-Track: Standard
-Status: Draft (not yet submitted)
+Author: David Geddes <@sabotensf>
+Status: Draft
 Created: 2026-11-16
 Updated: 2026-11-19
-Version: 0.2.0
+Version: 0.0.1
 Discussion: To be opened
-Requires: SEP-50, SEP-53
 ```
-
-> This is a working draft kept alongside its reference implementation. It has not been submitted to [stellar/stellar-protocol](https://github.com/stellar/stellar-protocol) and has no official status.
 
 ## Simple Summary
 
@@ -21,8 +17,9 @@ A standard interface for non-fungible tokens that are paired with a chip embedde
 
 ## Dependencies
 
-- [SEP-50](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0050.md) (Non-Fungible Tokens): the base token interface.
-- [SEP-53](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0053.md) (Sign and Verify Messages): the message prefix and digest that chips sign.
+- [SEP-50](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0050.md) (Non-Fungible Tokens): the base token interface. SEP-50 is itself a Draft, so this SEP follows its changes until it is final.
+- [SEP-53](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0053.md) (Sign and Verify Messages, Final): the message prefix and digest that chips sign.
+- [SEP-47](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0047.md) (Contract Interface Discovery): how a contract declares that it implements this SEP.
 - Soroban host functions `secp256k1_recover` and `sha256`.
 
 ## Motivation
@@ -41,7 +38,8 @@ A Physical Backed Token (PBT) contract:
 - moves a token only through `transfer_token`, authorised by a fresh chip signature naming the recipient;
 - disables the SEP-50 `transfer` and `transfer_from` functions;
 - binds every chip signature to the contract, the network, a per-chip nonce, the recipient, a timestamp and optional extra data, so a signature cannot be replayed across contracts, networks or uses;
-- lets anyone verify a chip signature over arbitrary data for a given token.
+- lets anyone verify a chip signature over a tagged challenge (`pbt:verify:` followed by caller-chosen data) for a given token;
+- lets the owner cancel unused chip signatures (optional).
 
 ## Specification
 
@@ -124,17 +122,19 @@ Whoever holds the card can have the chip sign a transfer whose timestamp is in t
 
 ### Interface
 
+`TokenID` is the token identifier type SEP-50 defines, an unsigned integer. The reference implementation uses `u32`.
+
 ```rust
 pub trait PhysicalBackedToken: NonFungibleToken /* SEP-50 */ {
     /// Token paired with `chip_id`. MUST fail if no minted token is paired with it.
-    fn token_id_for_chip(e: &Env, chip_id: BytesN<32>) -> u32;
+    fn token_id_for_chip(e: &Env, chip_id: BytesN<32>) -> TokenID;
 
     /// True if the paired chip signed SHA-256("Stellar Signed Message:\n" ‖ data).
     /// MUST fail if `token_id` has no chip, or if `data` doesn't start with
     /// `pbt:verify:`.
     fn is_chip_signature_for_token(
         e: &Env,
-        token_id: u32,
+        token_id: TokenID,
         data: Bytes,
         chip_signature: BytesN<64>,
         recovery_id: u32,
@@ -152,7 +152,7 @@ pub trait PhysicalBackedToken: NonFungibleToken /* SEP-50 */ {
         recovery_id: u32,
         signature_timestamp: u64,
         extras: Bytes,
-    ) -> u32;
+    ) -> TokenID;
 
     /// The 45-byte message (`pbt:transfer:` ‖ a 32-byte hash) a chip must sign
     /// (via its SEP-53 digest) for a mint or transfer to `to`.
@@ -172,6 +172,7 @@ pub trait PhysicalBackedToken: NonFungibleToken /* SEP-50 */ {
 pub trait PhysicalBackedTokenNonceRotation: PhysicalBackedToken {
     /// Replaces the chip's nonce, so every signature made but not yet used
     /// stops verifying. MUST require the authorisation of the token's owner.
+    /// SHOULD emit `NonceRotated`.
     fn rotate_nonce(e: &Env, chip_id: BytesN<32>);
 }
 ```
@@ -188,12 +189,23 @@ Minting is implementation-defined, as in ERC-5791, with one requirement: a token
 /// A chip was paired with a token. Topics: ["chip_set", token_id, chip_id].
 #[contractevent]
 pub struct ChipSet {
-    #[topic] pub token_id: u32,
+    #[topic] pub token_id: TokenID,
+    #[topic] pub chip_id: BytesN<32>,
+}
+
+/// The owner cancelled every unused signature for a chip (`rotate_nonce`).
+/// Topics: ["nonce_rotated", chip_id].
+#[contractevent]
+pub struct NonceRotated {
     #[topic] pub chip_id: BytesN<32>,
 }
 ```
 
-Transfers emit the SEP-50 `transfer` event and mints the SEP-50 `mint` event.
+Transfers emit the SEP-50 `transfer` event and mints the SEP-50 `mint` event. Contracts that implement `rotate_nonce` SHOULD emit `NonceRotated`, so indexers and wallets can show that a chip's pending signatures were cancelled.
+
+### Interface discovery
+
+Following SEP-47, a PBT contract SHOULD declare the SEPs it implements in a `sep` contract meta entry: `50` and this SEP's number once one is assigned (for example `sep = "50,NN"`).
 
 ## Design Rationale
 
@@ -228,9 +240,8 @@ A consequence of following Stellar conventions is that a PBT on Stellar is not s
 
 ## Reference Implementation
 
-[`contracts/recordpool-smart-card`](../contracts/recordpool-smart-card/src/contract.rs) in this repository, built on OpenZeppelin Stellar Contracts 0.8: a PBT for NFC music cards with USDC primary sales and tap-to-play, deployed to Stellar testnet. The music URL is application data, not part of this standard.
+[`contracts/recordpool-smart-card`](https://github.com/sabotensf/arx-halo-soroban-demo/blob/main/contracts/recordpool-smart-card/src/contract.rs) in [sabotensf/arx-halo-soroban-demo](https://github.com/sabotensf/arx-halo-soroban-demo), built on OpenZeppelin Stellar Contracts 0.8: a PBT for NFC music cards with USDC primary sales and tap-to-play, deployed to Stellar testnet. The music URL is application data, not part of this standard.
 
 ## Changelog
 
-- `v0.2.0`: purpose tags (`pbt:transfer:`, `pbt:verify:`); `signature_message` returns `Bytes`; optional `rotate_nonce`.
-- `v0.1.0`: initial draft.
+- `v0.0.1`: Initial draft.
