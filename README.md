@@ -369,6 +369,7 @@ Running the demo:
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | design rationale: data structures, threat model, trade-offs |
 | [`docs/sep-draft-physical-backed-tokens.md`](docs/sep-draft-physical-backed-tokens.md) | draft SEP: physical backed tokens on Soroban |
 | [`docs/ethereum-vs-soroban.md`](docs/ethereum-vs-soroban.md) | Ethereum → Soroban comparison |
+| [`docs/engagement-write-up.md`](docs/engagement-write-up.md) | engagement write-up: discovery → design → derisking → product feedback |
 
 ## License
 
