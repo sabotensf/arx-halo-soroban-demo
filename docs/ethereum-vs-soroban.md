@@ -7,27 +7,45 @@ Every Soroban snippet comes from this repository's [`RecordPoolSmartCard`](../co
 
 ## 1. Assembling the token
 
-**Solidity (OpenZeppelin 5.x)**: multiple inheritance, with hooks you resolve by hand:
+**Solidity (OpenZeppelin 5.x)**: the contract inherits from several base contracts. When two of them define the same function, Solidity makes you override it and name both parents, even if the override only calls `super`. With `ERC721Enumerable` and `AccessControl`, that's three functions of boilerplate:
 
 ```solidity
-contract RecordPoolSmartCard is ERC721, ERC721Enumerable, AccessControl /* + PBT */ {
+contract RecordPoolSmartCard is
+    ERC721,
+    ERC721Enumerable,
+    AccessControl
+{
     bytes32 public constant ISSUER = keccak256("ISSUER");
 
     function _update(address to, uint256 id, address auth)
-        internal override(ERC721, ERC721Enumerable) returns (address)
-    { return super._update(to, id, auth); }
+        internal
+        override(ERC721, ERC721Enumerable)
+        returns (address)
+    {
+        return super._update(to, id, auth);
+    }
 
-    function _increaseBalance(address a, uint128 v)
-        internal override(ERC721, ERC721Enumerable)
-    { super._increaseBalance(a, v); }
+    function _increaseBalance(address account, uint128 amount)
+        internal
+        override(ERC721, ERC721Enumerable)
+    {
+        super._increaseBalance(account, amount);
+    }
 
-    function supportsInterface(bytes4 id)
-        public view override(ERC721, ERC721Enumerable, AccessControl) returns (bool)
-    { return super.supportsInterface(id); }
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        override(ERC721, ERC721Enumerable, AccessControl)
+        returns (bool)
+    {
+        return super.supportsInterface(interfaceId);
+    }
+
+    // ...plus the PBT functions
 }
 ```
 
-**Soroban (OpenZeppelin Stellar 0.8)**: you pick one contract type (here `Enumerable`; several extensions combine as `Compose<(Enumerable, Royalties)>`). Each trait you implement gets its default methods exported as contract functions:
+**Soroban (OpenZeppelin Stellar 0.8)**: each trait you implement gets its default methods exported as contract functions:
 
 ```rust
 #[contractimpl(contracttrait)]
