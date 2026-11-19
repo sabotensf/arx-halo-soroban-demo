@@ -17,7 +17,9 @@ echo "admin/issuer/treasury: $ADMIN_ADDR"
 
 step "USDC Stellar Asset Contract"
 # The SAC for a classic asset only needs deploying once per network; ignore "already exists".
-stellar contract asset deploy --asset "$USDC_ASSET" --source-account "$ADMIN" --network "$NETWORK" >/dev/null 2>&1 || true
+if ! out="$(stellar contract asset deploy --asset "$USDC_ASSET" --source-account "$ADMIN" --network "$NETWORK" 2>&1)"; then
+  grep -qi "already exists" <<<"$out" || { echo "$out" >&2; exit 1; }
+fi
 USDC_SAC="$(usdc_sac)"
 echo "USDC SAC: $USDC_SAC"
 # The treasury is a classic account, so it needs a USDC trustline to receive proceeds.

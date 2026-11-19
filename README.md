@@ -132,13 +132,14 @@ sequenceDiagram
 | Function | Who | What it does |
 |---|---|---|
 | `__constructor(admin, payment_token, treasury, max_duration_window, base_uri, name, symbol)` | deployer | Runs atomically with deployment. Sets OZ metadata, the admin and `issuer` roles, and how long a chip signature stays valid. |
-| `register_card(chip_id, price, music_url, operator)` | `issuer` | Adds a manufactured card to inventory, with the track it plays. `chip_id` is SHA-256 of the chip's key-slot-1 public key. |
+| `register_card(chip_id, price, music_url, operator)` | `issuer` | Adds a manufactured card to inventory, with the track it plays (an `http(s)` URL). `chip_id` is SHA-256 of the chip's key-slot-1 public key. |
 | `purchase(buyer, chip_id, chip_signature, recovery_id, signature_timestamp, extras) → { token_id, music_url }` | buyer, holding the card | The chip signs a mint to `buyer`; the buyer's wallet authorises the USDC payment. Pays the treasury and mints the token in one transaction, and returns the card's track. |
 | `music_url(chip_id) → url` | anyone | The track a sold card plays. This is what a plain tap looks up, as a free simulation with no wallet. Fails with `NoMappedTokenForChip` while the card is unsold. |
 | `transfer_token(to, chip_id, chip_signature, recovery_id, signature_timestamp, extras) → token_id` | whoever holds the card | **PBT** (ERC-5791 `transferToken`). Moves the token to `to` on a fresh chip signature. No wallet signature needed. |
 | `token_id_for_chip(chip_id) → token_id` | anyone | **PBT** (ERC-5791 `tokenIdFor`). Token paired with a chip. |
-| `is_chip_signature_for_token(token_id, data, chip_signature, recovery_id) → bool` | anyone | **PBT** (ERC-5791 `isChipSignatureForToken`). True if the paired chip signed the SEP-53 digest of `data`. Run it as a free simulation. |
-| `signature_message(to, chip_id, signature_timestamp, extras) → message` | anyone | The 32-byte message the chip must sign for `purchase` / `transfer_token`. |
+| `is_chip_signature_for_token(token_id, data, chip_signature, recovery_id) → bool` | anyone | **PBT** (ERC-5791 `isChipSignatureForToken`). True if the paired chip signed the SEP-53 digest of `data`, which must start with `pbt:verify:`. Run it as a free simulation. |
+| `rotate_nonce(chip_id)` | the token's owner | Changes the chip's nonce, cancelling every chip signature not yet used (for example after lending the card). |
+| `signature_message(to, chip_id, signature_timestamp, extras) → message` | anyone | The 45-byte message (`pbt:transfer:` + a 32-byte hash) the chip must sign for `purchase` / `transfer_token`. |
 | `chip_nonce`, `chip_id_for_token`, `card_price`, `config` | anyone | Read-only lookups. |
 | `set_treasury` | `issuer` | Changes where primary-sale proceeds go. |
 | `transfer`, `transfer_from` | — | **Disabled** (`TransferRequiresChip`), as in ERC-5791. |
@@ -147,7 +148,7 @@ sequenceDiagram
 ### What the chip signs
 
 ```
-message = SHA-256(
+message = "pbt:transfer:" ‖ SHA-256(
     contract
   ‖ network_id
   ‖ chip_id
@@ -162,7 +163,7 @@ digest = SHA-256("Stellar Signed Message:\n" ‖ message)
 signature = ECDSA-secp256k1(digest) → r ‖ s, recovery_id
 ```
 
-`contract` and `to` are XDR-encoded Soroban addresses, and `network_id` is SHA-256 of the network passphrase. A client never has to rebuild this encoding: it calls the `signature_message` view, computes the SEP-53 digest, and passes that to HaLo's `sign` command (key slot 1) as `digest`.
+`contract` and `to` are XDR-encoded Soroban addresses, and `network_id` is SHA-256 of the network passphrase. A client never has to rebuild this encoding: it calls the `signature_message` view, computes the SEP-53 digest, and passes that to HaLo's `sign` command (key slot 1) as `digest`. An authenticity check signs `"pbt:verify:" ‖ challenge` instead, so the two kinds of signature can't be swapped.
 
 SEP-53 defines this digest for Stellar account keys, which sign it with Ed25519. A HaLo chip can't sign Ed25519, so it signs the same digest with its secp256k1 key. The contract then:
 

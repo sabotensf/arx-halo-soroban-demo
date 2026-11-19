@@ -3,14 +3,19 @@ extern crate std;
 use k256::ecdsa::SigningKey;
 use sha2::{Digest, Sha256};
 use soroban_sdk::{
-    testutils::{storage::Instance as _, Address as _, AuthorizedFunction, Ledger},
+    testutils::{
+        storage::{Instance as _, Persistent as _},
+        Address as _, AuthorizedFunction, Events as _, Ledger,
+    },
     token::{StellarAssetClient, TokenClient},
-    Address, Bytes, BytesN, Env, Error, IntoVal, String, Symbol,
+    Address, Bytes, BytesN, Env, Error, Event, IntoVal, String, Symbol,
 };
+use stellar_tokens::non_fungible::{Mint, Transfer};
 
 use crate::{
-    contract::SEP53_PREFIX,
-    storage::{INSTANCE_EXTEND_AMOUNT, INSTANCE_TTL_THRESHOLD},
+    contract::{SEP53_PREFIX, TRANSFER_TAG, VERIFY_TAG},
+    events::{CardPurchased, CardRegistered, ChipSet, NonceRotated},
+    storage::{CardKey, INSTANCE_EXTEND_AMOUNT, INSTANCE_TTL_THRESHOLD, PERSISTENT_EXTEND_AMOUNT},
     CardError, RecordPoolSmartCard, RecordPoolSmartCardClient,
 };
 
@@ -122,6 +127,20 @@ fn contract_err(err: CardError) -> Error {
     Error::from_contract_error(err as u32)
 }
 
+/// OpenZeppelin AccessControl's `Unauthorized`.
+const ACCESS_UNAUTHORIZED: u32 = 2000;
+
+fn to_vec(b: &Bytes) -> std::vec::Vec<u8> {
+    b.iter().collect()
+}
+
+/// A "prove this card is genuine" challenge: the verify tag + `challenge`.
+fn verify_data(e: &Env, challenge: &[u8]) -> Bytes {
+    let mut data = Bytes::from_slice(e, VERIFY_TAG);
+    data.extend_from_slice(challenge);
+    data
+}
+
 const TRACK: &str = "http://localhost:8000/star-dust.mp3";
 
 fn track(e: &Env) -> String {
@@ -136,7 +155,7 @@ fn no_extras(e: &Env) -> Bytes {
 /// the chip sign it.
 fn tap_on(card: &RecordPoolSmartCardClient, e: &Env, chip: &Chip, to: &Address, ts: u64) -> Sig {
     let msg = card.signature_message(to, &chip.id(e), &ts, &no_extras(e));
-    chip.sign(e, &msg.to_array())
+    chip.sign(e, &to_vec(&msg))
 }
 
 fn tap(s: &Setup, chip: &Chip, to: &Address) -> (Sig, u64) {
@@ -288,7 +307,7 @@ fn purchase_requires_the_chip() {
     let msg = s
         .card
         .signature_message(&buyer, &genuine.id(&s.e), &ts, &no_extras(&s.e));
-    let fake = counterfeit.sign(&s.e, &msg.to_array());
+    let fake = counterfeit.sign(&s.e, &to_vec(&msg));
     assert_eq!(
         purchase(&s, &buyer, &genuine, &fake, ts),
         Err(contract_err(CardError::InvalidSignature))
@@ -317,10 +336,11 @@ fn purchase_signature_names_the_buyer() {
 fn only_issuer_can_register() {
     let s = setup();
     let rando = Address::generate(&s.e);
-    assert!(s
-        .card
-        .try_register_card(&Chip::new(1).id(&s.e), &CARD_PRICE, &track(&s.e), &rando)
-        .is_err());
+    assert_eq!(
+        s.card
+            .try_register_card(&Chip::new(1).id(&s.e), &CARD_PRICE, &track(&s.e), &rando),
+        Err(Ok(Error::from_contract_error(ACCESS_UNAUTHORIZED)))
+    );
 
     s.card
         .grant_role(&rando, &Symbol::new(&s.e, "issuer"), &s.admin);
@@ -467,7 +487,7 @@ fn extras_are_signed() {
     let extras = Bytes::from_slice(&s.e, b"gift");
     let ts = s.e.ledger().timestamp();
     let msg = s.card.signature_message(&bob, &chip.id(&s.e), &ts, &extras);
-    let sig = chip.sign(&s.e, &msg.to_array());
+    let sig = chip.sign(&s.e, &to_vec(&msg));
     assert_eq!(
         transfer_token(&s, &bob, &chip, &sig, ts),
         Err(contract_err(CardError::InvalidSignature))
@@ -595,7 +615,8 @@ fn is_chip_signature_for_token() {
     let chip = Chip::new(1);
     let token_id = register_and_buy(&s, &chip, &funded(&s, CARD_PRICE));
 
-    let data = b"is this card genuine? nonce 8f3a";
+    let data = to_vec(&verify_data(&s.e, b"nonce 8f3a"));
+    let other = to_vec(&verify_data(&s.e, b"something else"));
     let check = |sig: &Sig, data: &[u8]| {
         s.card.is_chip_signature_for_token(
             &token_id,
@@ -605,9 +626,74 @@ fn is_chip_signature_for_token() {
         )
     };
 
-    assert!(check(&chip.sign(&s.e, data), data));
-    assert!(!check(&Chip::new(2).sign(&s.e, data), data));
-    assert!(!check(&chip.sign(&s.e, data), b"something else"));
+    assert!(check(&chip.sign(&s.e, &data), &data));
+    assert!(!check(&Chip::new(2).sign(&s.e, &data), &data));
+    assert!(!check(&chip.sign(&s.e, &data), &other));
+}
+
+#[test]
+fn verification_data_needs_the_verify_tag() {
+    let s = setup();
+    let chip = Chip::new(1);
+    let token_id = register_and_buy(&s, &chip, &funded(&s, CARD_PRICE));
+    let bob = Address::generate(&s.e);
+
+    // Untagged data, and a transfer message passed off as a challenge.
+    let ts = s.e.ledger().timestamp();
+    let transfer_msg = s
+        .card
+        .signature_message(&bob, &chip.id(&s.e), &ts, &no_extras(&s.e));
+    for data in [Bytes::from_slice(&s.e, b"nonce 8f3a"), transfer_msg] {
+        let sig = chip.sign(&s.e, &to_vec(&data));
+        assert_eq!(
+            s.card
+                .try_is_chip_signature_for_token(&token_id, &data, &sig.rs, &sig.recovery_id),
+            Err(Ok(contract_err(CardError::InvalidVerificationData)))
+        );
+    }
+}
+
+#[test]
+fn verification_signature_cant_move_the_token() {
+    // Mallory's "is your card genuine?" page hands the holder a challenge
+    // that is really the transfer message naming Mallory. Signed as
+    // verification data it carries the verify tag, so it never matches the
+    // transfer message, which carries the transfer tag.
+    let s = setup();
+    let chip = Chip::new(1);
+    let alice = funded(&s, CARD_PRICE);
+    let mallory = Address::generate(&s.e);
+    let token_id = register_and_buy(&s, &chip, &alice);
+
+    let ts = s.e.ledger().timestamp();
+    let transfer_msg = s
+        .card
+        .signature_message(&mallory, &chip.id(&s.e), &ts, &no_extras(&s.e));
+    assert!(to_vec(&transfer_msg).starts_with(TRANSFER_TAG));
+    let challenge = verify_data(&s.e, &to_vec(&transfer_msg));
+    let sig = chip.sign(&s.e, &to_vec(&challenge));
+    assert!(s
+        .card
+        .is_chip_signature_for_token(&token_id, &challenge, &sig.rs, &sig.recovery_id));
+
+    assert_eq!(
+        transfer_token(&s, &mallory, &chip, &sig, ts),
+        Err(contract_err(CardError::InvalidSignature))
+    );
+    assert_eq!(s.card.owner_of(&token_id), alice);
+}
+
+#[test]
+fn verification_of_unknown_token_fails() {
+    let s = setup();
+    let chip = Chip::new(1);
+    let data = verify_data(&s.e, b"nonce");
+    let sig = chip.sign(&s.e, &to_vec(&data));
+    assert_eq!(
+        s.card
+            .try_is_chip_signature_for_token(&7, &data, &sig.rs, &sig.recovery_id),
+        Err(Ok(contract_err(CardError::UnknownToken)))
+    );
 }
 
 #[test]
@@ -651,16 +737,243 @@ fn sold_card_plays_for_anyone() {
 }
 
 #[test]
-fn register_needs_a_music_url() {
+fn register_needs_an_http_music_url() {
     let s = setup();
-    assert_eq!(
-        s.card.try_register_card(
-            &Chip::new(1).id(&s.e),
-            &CARD_PRICE,
-            &String::from_str(&s.e, ""),
-            &s.admin
+    let id = Chip::new(1).id(&s.e);
+    for bad in [
+        "",
+        "http://",
+        "ipfs://bafy",
+        "star-dust.mp3",
+        "javascript:alert(1)",
+    ] {
+        assert_eq!(
+            s.card
+                .try_register_card(&id, &CARD_PRICE, &String::from_str(&s.e, bad), &s.admin),
+            Err(Ok(contract_err(CardError::InvalidMusicUrl))),
+            "{bad}"
+        );
+    }
+    s.card.register_card(
+        &id,
+        &CARD_PRICE,
+        &String::from_str(&s.e, "https://example.com/a.mp3"),
+        &s.admin,
+    );
+    s.card
+        .register_card(&Chip::new(2).id(&s.e), &CARD_PRICE, &track(&s.e), &s.admin);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #3012)")]
+fn zero_signature_window_is_rejected() {
+    let e = Env::default();
+    let admin = Address::generate(&e);
+    e.register(
+        RecordPoolSmartCard,
+        (
+            admin.clone(),
+            Address::generate(&e),
+            admin,
+            0u64,
+            String::from_str(&e, "http://localhost:8000/meta/"),
+            String::from_str(&e, "RecordPool Smart Card"),
+            String::from_str(&e, "RPCARD"),
         ),
-        Err(Ok(contract_err(CardError::InvalidMusicUrl)))
+    );
+}
+
+// ------------------------------------------------------------ owner actions
+
+#[test]
+fn transfer_to_current_owner_keeps_the_card() {
+    let s = setup();
+    let chip = Chip::new(1);
+    let alice = funded(&s, CARD_PRICE);
+    let token_id = register_and_buy(&s, &chip, &alice);
+
+    let (sig, ts) = tap(&s, &chip, &alice);
+    assert_eq!(transfer_token(&s, &alice, &chip, &sig, ts), Ok(token_id));
+    assert_eq!(s.card.owner_of(&token_id), alice);
+    assert_eq!(s.card.balance(&alice), 1);
+    assert_eq!(s.card.get_owner_token_id(&alice, &0), token_id);
+    // The signature was still used up.
+    assert_eq!(
+        transfer_token(&s, &alice, &chip, &sig, ts),
+        Err(contract_err(CardError::InvalidSignature))
+    );
+}
+
+#[test]
+fn owner_can_cancel_unused_signatures() {
+    let s = setup();
+    let chip = Chip::new(1);
+    let alice = funded(&s, CARD_PRICE);
+    let mallory = Address::generate(&s.e);
+    let token_id = register_and_buy(&s, &chip, &alice);
+
+    // Mallory borrows the card and has it sign a transfer to herself.
+    let (sig, ts) = tap(&s, &chip, &mallory);
+    let before = s.card.chip_nonce(&chip.id(&s.e));
+
+    s.card.rotate_nonce(&chip.id(&s.e));
+    let auths = s.e.auths();
+    assert_eq!(auths.len(), 1);
+    assert_eq!(auths[0].0, alice);
+    assert_eq!(
+        s.e.events()
+            .all()
+            .filter_by_contract(&s.card.address)
+            .events(),
+        [NonceRotated {
+            chip_id: chip.id(&s.e)
+        }
+        .to_xdr(&s.e, &s.card.address)]
+    );
+    assert_ne!(s.card.chip_nonce(&chip.id(&s.e)), before);
+
+    assert_eq!(
+        transfer_token(&s, &mallory, &chip, &sig, ts),
+        Err(contract_err(CardError::InvalidSignature))
+    );
+    assert_eq!(s.card.owner_of(&token_id), alice);
+}
+
+#[test]
+fn rotate_nonce_needs_the_owner() {
+    let s = setup();
+    let chip = Chip::new(1);
+    let alice = funded(&s, CARD_PRICE);
+    register_and_buy(&s, &chip, &alice);
+    s.e.set_auths(&[]);
+    assert!(s.card.try_rotate_nonce(&chip.id(&s.e)).is_err());
+}
+
+#[test]
+fn rotate_nonce_needs_a_sold_card() {
+    let s = setup();
+    let chip = Chip::new(1);
+    s.card
+        .register_card(&chip.id(&s.e), &CARD_PRICE, &track(&s.e), &s.admin);
+    assert_eq!(
+        s.card.try_rotate_nonce(&chip.id(&s.e)),
+        Err(Ok(contract_err(CardError::NoMappedTokenForChip)))
+    );
+}
+
+// ------------------------------------------------------------------ admin
+
+#[test]
+fn issuer_sets_the_treasury() {
+    let s = setup();
+    let new_treasury = Address::generate(&s.e);
+    let rando = Address::generate(&s.e);
+    assert_eq!(
+        s.card.try_set_treasury(&new_treasury, &rando),
+        Err(Ok(Error::from_contract_error(ACCESS_UNAUTHORIZED)))
+    );
+    assert_eq!(s.card.config().treasury, s.treasury);
+
+    s.card.set_treasury(&new_treasury, &s.admin);
+    assert_eq!(s.card.config().treasury, new_treasury);
+
+    // The next sale pays the new treasury.
+    let buyer = funded(&s, CARD_PRICE);
+    register_and_buy(&s, &Chip::new(1), &buyer);
+    assert_eq!(s.usdc.balance(&new_treasury), CARD_PRICE);
+    assert_eq!(s.usdc.balance(&s.treasury), 0);
+}
+
+#[test]
+fn signature_is_bound_to_the_network() {
+    let s = setup();
+    let chip = Chip::new(1);
+    let alice = funded(&s, CARD_PRICE);
+    s.card
+        .register_card(&chip.id(&s.e), &CARD_PRICE, &track(&s.e), &s.admin);
+
+    let (sig, ts) = tap(&s, &chip, &alice); // signed for this network
+    s.e.ledger().with_mut(|l| l.network_id = [7; 32]);
+    assert_eq!(
+        purchase(&s, &alice, &chip, &sig, ts),
+        Err(contract_err(CardError::InvalidSignature))
+    );
+}
+
+// ----------------------------------------------------------------- events
+
+fn events(s: &Setup) -> std::vec::Vec<soroban_sdk::xdr::ContractEvent> {
+    s.e.events()
+        .all()
+        .filter_by_contract(&s.card.address)
+        .events()
+        .to_vec()
+}
+
+#[test]
+fn state_changes_emit_events() {
+    let s = setup();
+    let chip = Chip::new(1);
+    let chip_id = chip.id(&s.e);
+    let alice = funded(&s, CARD_PRICE);
+    let bob = Address::generate(&s.e);
+    let addr = s.card.address.clone();
+
+    s.card
+        .register_card(&chip_id, &CARD_PRICE, &track(&s.e), &s.admin);
+    assert_eq!(
+        events(&s),
+        [CardRegistered {
+            chip_id: chip_id.clone(),
+            price: CARD_PRICE
+        }
+        .to_xdr(&s.e, &addr)]
+    );
+
+    let (sig, ts) = tap(&s, &chip, &alice);
+    let token_id = purchase(&s, &alice, &chip, &sig, ts).unwrap();
+    let emitted = events(&s);
+    for expected in [
+        Mint {
+            to: alice.clone(),
+            token_id,
+        }
+        .to_xdr(&s.e, &addr),
+        ChipSet {
+            token_id,
+            chip_id: chip_id.clone(),
+        }
+        .to_xdr(&s.e, &addr),
+        CardPurchased {
+            buyer: alice.clone(),
+            token_id,
+            chip_id: chip_id.clone(),
+            price: CARD_PRICE,
+        }
+        .to_xdr(&s.e, &addr),
+    ] {
+        assert!(emitted.contains(&expected), "missing {expected:?}");
+    }
+    // ChipSet's topics are ["chip_set", token_id, chip_id].
+    let chip_set = ChipSet {
+        token_id,
+        chip_id: chip_id.clone(),
+    };
+    assert_eq!(
+        chip_set.topics(&s.e),
+        (Symbol::new(&s.e, "chip_set"), token_id, chip_id.clone()).into_val(&s.e)
+    );
+
+    let (sig, ts) = tap(&s, &chip, &bob);
+    transfer_token(&s, &bob, &chip, &sig, ts).unwrap();
+    assert_eq!(
+        events(&s),
+        [Transfer {
+            from: alice,
+            to: bob,
+            token_id
+        }
+        .to_xdr(&s.e, &addr)]
     );
 }
 
@@ -670,20 +983,70 @@ fn instance_ttl(s: &Setup) -> u32 {
     s.e.as_contract(&s.card.address, || s.e.storage().instance().get_ttl())
 }
 
+/// Moves the ledger on two days, so every 30-day TTL is below its threshold.
+fn age_two_days(s: &Setup) {
+    let elapsed = INSTANCE_EXTEND_AMOUNT - INSTANCE_TTL_THRESHOLD + 17_280;
+    s.e.ledger().with_mut(|l| l.sequence_number += elapsed);
+    assert!(instance_ttl(s) < INSTANCE_TTL_THRESHOLD);
+}
+
 #[test]
-fn state_changes_extend_instance_ttl() {
+fn each_state_change_extends_instance_ttl() {
     let s = setup();
     // The constructor extends the instance.
     assert_eq!(instance_ttl(&s), INSTANCE_EXTEND_AMOUNT);
 
-    // Two days later the TTL is below the threshold...
-    let elapsed = INSTANCE_EXTEND_AMOUNT - INSTANCE_TTL_THRESHOLD + 17_280;
-    s.e.ledger().with_mut(|l| l.sequence_number += elapsed);
-    assert!(instance_ttl(&s) < INSTANCE_TTL_THRESHOLD);
-
-    // ...and the next state change extends it back to the full 30 days.
     let chip = Chip::new(1);
-    let buyer = funded(&s, 100 * USDC);
-    register_and_buy(&s, &chip, &buyer);
-    assert_eq!(instance_ttl(&s), INSTANCE_EXTEND_AMOUNT);
+    let alice = funded(&s, CARD_PRICE);
+    let bob = Address::generate(&s.e);
+
+    age_two_days(&s);
+    s.card
+        .register_card(&chip.id(&s.e), &CARD_PRICE, &track(&s.e), &s.admin);
+    assert_eq!(instance_ttl(&s), INSTANCE_EXTEND_AMOUNT, "register_card");
+
+    age_two_days(&s);
+    let (sig, ts) = tap(&s, &chip, &alice);
+    purchase(&s, &alice, &chip, &sig, ts).unwrap();
+    assert_eq!(instance_ttl(&s), INSTANCE_EXTEND_AMOUNT, "purchase");
+
+    age_two_days(&s);
+    let (sig, ts) = tap(&s, &chip, &bob);
+    transfer_token(&s, &bob, &chip, &sig, ts).unwrap();
+    assert_eq!(instance_ttl(&s), INSTANCE_EXTEND_AMOUNT, "transfer_token");
+
+    age_two_days(&s);
+    s.card.rotate_nonce(&chip.id(&s.e));
+    assert_eq!(instance_ttl(&s), INSTANCE_EXTEND_AMOUNT, "rotate_nonce");
+
+    age_two_days(&s);
+    s.card.set_treasury(&s.treasury, &s.admin);
+    assert_eq!(instance_ttl(&s), INSTANCE_EXTEND_AMOUNT, "set_treasury");
+}
+
+#[test]
+fn transfer_keeps_the_card_entries_live() {
+    let s = setup();
+    let chip = Chip::new(1);
+    let alice = funded(&s, CARD_PRICE);
+    let bob = Address::generate(&s.e);
+    let token_id = register_and_buy(&s, &chip, &alice);
+
+    age_two_days(&s);
+    let (sig, ts) = tap(&s, &chip, &bob);
+    transfer_token(&s, &bob, &chip, &sig, ts).unwrap();
+
+    let ttl = |key: CardKey| {
+        s.e.as_contract(&s.card.address, || s.e.storage().persistent().get_ttl(&key))
+    };
+    assert_eq!(ttl(CardKey::Music(chip.id(&s.e))), PERSISTENT_EXTEND_AMOUNT);
+    assert_eq!(ttl(CardKey::TokenChip(token_id)), PERSISTENT_EXTEND_AMOUNT);
+    assert_eq!(
+        ttl(CardKey::ChipToken(chip.id(&s.e))),
+        PERSISTENT_EXTEND_AMOUNT
+    );
+    assert_eq!(
+        ttl(CardKey::ChipNonce(chip.id(&s.e))),
+        PERSISTENT_EXTEND_AMOUNT
+    );
 }

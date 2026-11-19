@@ -57,8 +57,9 @@ step "4. Anyone taps the card: the tap page looks up the track and plays it (no 
 echo "music_url(chip_id) -> $(view music_url --chip_id "$CHIP_ID")"
 echo "tap page: http://localhost:8000/?contract=$(contract_id)&pk1=$("$HALO" sim-pubkey "$WORK/card.key")"
 
-step "5. Is this card genuine? The chip signs some data; the contract checks it (read-only)"
-DATA="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+step "5. Is this card genuine? The chip signs a challenge; the contract checks it (read-only)"
+# Challenges start with "pbt:verify:", so a verification signature can never move the token.
+DATA="$(printf 'pbt:verify:' | od -An -tx1 | tr -d ' \n')$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
 check() {
   local sig rid; read -r sig rid <<<"$("$HALO" sim-sign "$1" "$DATA")"
   view is_chip_signature_for_token --token_id "$TOKEN_ID" --data "$DATA" --chip_signature "$sig" --recovery_id "$rid"
@@ -68,23 +69,23 @@ echo "genuine chip -> $(check "$WORK/card.key")"
 echo "other chip   -> $(check "$WORK/fake.key")"
 
 step "6. Wallet transfers are disabled: the card has to move with the chip"
-if invoke "$ALICE" transfer --from "$(addr "$ALICE")" --to "$(addr "$BOB")" --token_id "$TOKEN_ID" >/dev/null 2>&1; then
-  echo "wallet transfer accepted?!"; exit 1
-else
-  echo "alice -> bob transfer without the chip -> rejected (TransferRequiresChip) ✓"
-fi
+# expect_error <code> <what> <command…>: the command must fail with Error(Contract, #<code>).
+expect_error() {
+  local code="$1" what="$2" out; shift 2
+  if out="$("$@" 2>&1)"; then echo "$what accepted?!"; exit 1; fi
+  grep -q "#$code" <<<"$out" || { echo "$what failed for another reason:"; echo "$out"; exit 1; }
+}
+expect_error 3010 "wallet transfer" invoke "$ALICE" transfer --from "$(addr "$ALICE")" --to "$(addr "$BOB")" --token_id "$TOKEN_ID"
+echo "alice -> bob transfer without the chip -> rejected (TransferRequiresChip) ✓"
 
 step "7. Alice hands Bob the card; Bob taps it to take the token"
 tap "$WORK/card.key" "$(addr "$BOB")"
 invoke "$BOB" transfer_token --to "$(addr "$BOB")" --chip_id "$CHIP_ID" \
   --chip_signature "$SIG" --recovery_id "$RID" --signature_timestamp "$TS" --extras-file-path /dev/null >/dev/null
 echo "owner now: $(view owner_of --token_id "$TOKEN_ID")  (bob = $(addr "$BOB"))"
-if invoke "$BOB" transfer_token --to "$(addr "$BOB")" --chip_id "$CHIP_ID" \
-  --chip_signature "$SIG" --recovery_id "$RID" --signature_timestamp "$TS" --extras-file-path /dev/null >/dev/null 2>&1; then
-  echo "replayed tap accepted?!"; exit 1
-else
-  echo "same signature replayed -> rejected (nonce changed) ✓"
-fi
+expect_error 3006 "replayed tap" invoke "$BOB" transfer_token --to "$(addr "$BOB")" --chip_id "$CHIP_ID" \
+  --chip_signature "$SIG" --recovery_id "$RID" --signature_timestamp "$TS" --extras-file-path /dev/null
+echo "same signature replayed -> rejected (nonce changed) ✓"
 
 step "Done"
 echo "https://stellar.expert/explorer/$NETWORK/contract/$(contract_id)"

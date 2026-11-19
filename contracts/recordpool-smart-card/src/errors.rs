@@ -30,6 +30,10 @@ pub enum CardError {
     /// Tokens only move with a chip signature (`transfer_token`), as in
     /// ERC-5791; wallet-signed `transfer` / `transfer_from` are disabled.
     TransferRequiresChip = 3010,
-    /// A card must be registered with a music URL.
+    /// A card must be registered with an `http://` or `https://` music URL.
     InvalidMusicUrl = 3011,
+    /// `max_duration_window` must be greater than zero.
+    InvalidWindow = 3012,
+    /// Data for `is_chip_signature_for_token` must start with `pbt:verify:`.
+    InvalidVerificationData = 3013,
 }

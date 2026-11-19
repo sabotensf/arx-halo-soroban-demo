@@ -2,8 +2,10 @@ use soroban_sdk::{contracttype, panic_with_error, Address, BytesN, Env, String};
 
 use crate::errors::CardError;
 
-/// ~30 days at 5s ledgers. Persistent entries are bumped whenever they are
-/// touched so that live cards never get archived.
+/// ~30 days at 5s ledgers. Persistent entries are topped up to 30 days by
+/// every state change that touches them (`register_card`, `purchase`,
+/// `transfer_token`, `rotate_nonce`). Views run as simulations, so their
+/// reads don't extend anything.
 const DAY_IN_LEDGERS: u32 = 17_280;
 pub const PERSISTENT_EXTEND_AMOUNT: u32 = 30 * DAY_IN_LEDGERS;
 pub const PERSISTENT_TTL_THRESHOLD: u32 = PERSISTENT_EXTEND_AMOUNT - DAY_IN_LEDGERS;
@@ -120,6 +122,14 @@ pub fn get_token_for_chip(e: &Env, chip_id: &ChipId) -> Option<u32> {
         bump(e, &key);
     }
     token
+}
+
+/// Keeps a sold card's entries live: called by `transfer_token`, the state
+/// change a sold card goes through, since its music URL and token -> chip
+/// entries are otherwise only read by views.
+pub fn extend_card_ttl(e: &Env, chip_id: &ChipId, token_id: u32) {
+    bump(e, &CardKey::Music(chip_id.clone()));
+    bump(e, &CardKey::TokenChip(token_id));
 }
 
 pub fn get_chip_for_token(e: &Env, token_id: u32) -> ChipId {

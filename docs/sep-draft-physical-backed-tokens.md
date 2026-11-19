@@ -7,8 +7,8 @@ Author: David Geddes
 Track: Standard
 Status: Draft (not yet submitted)
 Created: 2026-11-16
-Updated: 2026-11-18
-Version: 0.1.0
+Updated: 2026-11-19
+Version: 0.2.0
 Discussion: To be opened
 Requires: SEP-50, SEP-53
 ```
@@ -72,12 +72,24 @@ A chip signature is passed to a contract as two values, matching the `secp256k1_
 
 A `recovery_id` other than 0 or 1 MUST be rejected.
 
+### Purpose tags
+
+A chip key signs two kinds of message: transfer messages, which move a token, and challenges, which only prove a card is genuine. Each starts with its own tag, so a signature made for one purpose never verifies for the other:
+
+| Purpose | Signed message starts with |
+|---|---|
+| Mint or transfer | `pbt:transfer:` (13 bytes, ASCII) |
+| Authenticity check | `pbt:verify:` (11 bytes, ASCII) |
+
+Without the tags, a page asking the holder to "verify" their card could present a transfer message as its challenge, and the tap would authorise the transfer.
+
 ### Transfer message
 
 The message a chip signs to authorise a mint or transfer to `to` is:
 
 ```
-message = SHA-256( contract_xdr
+message = "pbt:transfer:"
+        ‖ SHA-256( contract_xdr
                  ‖ network_id
                  ‖ chip_id
                  ‖ chip_nonce
@@ -96,7 +108,7 @@ message = SHA-256( contract_xdr
 | `signature_timestamp` | 8 bytes, big-endian `u64` seconds |
 | `SHA-256(extras)` | 32 bytes |
 
-The chip signs `SHA-256("Stellar Signed Message:\n" ‖ message)`. Contracts MUST expose `message` as a view (`signature_message`) so that clients never have to reproduce the XDR encoding.
+The message is 45 bytes: the tag and a 32-byte hash. The chip signs `SHA-256("Stellar Signed Message:\n" ‖ message)`. Contracts MUST expose `message` as a view (`signature_message`) so that clients never have to reproduce the XDR encoding.
 
 ### Freshness and replay protection
 
@@ -108,6 +120,8 @@ When consuming a chip signature, a contract MUST:
 
 A chip's nonce starts at 32 zero bytes.
 
+Whoever holds the card can have the chip sign a transfer whose timestamp is in the future, and submit it once that time arrives. Contracts SHOULD let the token's owner cancel all unused signatures by changing the nonce (`rotate_nonce` below).
+
 ### Interface
 
 ```rust
@@ -116,7 +130,8 @@ pub trait PhysicalBackedToken: NonFungibleToken /* SEP-50 */ {
     fn token_id_for_chip(e: &Env, chip_id: BytesN<32>) -> u32;
 
     /// True if the paired chip signed SHA-256("Stellar Signed Message:\n" ‖ data).
-    /// MUST fail if `token_id` has no chip.
+    /// MUST fail if `token_id` has no chip, or if `data` doesn't start with
+    /// `pbt:verify:`.
     fn is_chip_signature_for_token(
         e: &Env,
         token_id: u32,
@@ -139,18 +154,25 @@ pub trait PhysicalBackedToken: NonFungibleToken /* SEP-50 */ {
         extras: Bytes,
     ) -> u32;
 
-    /// The 32-byte message a chip must sign (via its SEP-53 digest) for a mint
-    /// or transfer to `to`.
+    /// The 45-byte message (`pbt:transfer:` ‖ a 32-byte hash) a chip must sign
+    /// (via its SEP-53 digest) for a mint or transfer to `to`.
     fn signature_message(
         e: &Env,
         to: Address,
         chip_id: BytesN<32>,
         signature_timestamp: u64,
         extras: Bytes,
-    ) -> BytesN<32>;
+    ) -> Bytes;
 
     /// The nonce the chip's next signature must cover.
     fn chip_nonce(e: &Env, chip_id: BytesN<32>) -> BytesN<32>;
+}
+
+/// OPTIONAL, RECOMMENDED: lets the owner cancel unused chip signatures.
+pub trait PhysicalBackedTokenNonceRotation: PhysicalBackedToken {
+    /// Replaces the chip's nonce, so every signature made but not yet used
+    /// stops verifying. MUST require the authorisation of the token's owner.
+    fn rotate_nonce(e: &Env, chip_id: BytesN<32>);
 }
 ```
 
@@ -196,11 +218,12 @@ A consequence of following Stellar conventions is that a PBT on Stellar is not s
 ## Security Concerns
 
 - **Chip authenticity.** The standard trusts whoever pairs chips with tokens. A software key paired as a "chip" would let its holder move the token freely. Implementations SHOULD verify a manufacturer attestation (for HaLo, `attestSig`) before pairing.
-- **Raw-digest signing.** Chips that sign arbitrary digests (such as HaLo key slot 1) will sign whatever a client sends them. The SEP-53 prefix keeps a PBT signature from being mistaken for one made for a different scheme, and the transfer message binds it to one contract, network, nonce and recipient. Wallet and app developers should still only send digests they built themselves.
+- **Raw-digest signing.** Chips that sign arbitrary digests (such as HaLo key slot 1) will sign whatever a client sends them. The SEP-53 prefix keeps a PBT signature from being mistaken for one made for a different scheme, the purpose tags keep an authenticity check from being used as a transfer, and the transfer message binds it to one contract, network, nonce and recipient. Wallet and app developers should still only send digests they built themselves, and SHOULD refuse to sign a `pbt:transfer:` message outside a transfer the user started.
+- **Pre-signed transfers.** A chip's nonce is public, so whoever holds the card can have it sign a transfer for later. The owner can cancel such signatures with `rotate_nonce`.
 - **Possession, not consent.** Whoever can tap the chip can move the token. That is the point of the standard, but it means a lost or stolen item takes its token with it, as with any bearer asset.
 - **Signature lifetime.** A signature is valid for `max_duration_window`. Short windows limit the use of a signature captured during a tap; very short windows can reject legitimate transactions when ledger time lags the client's clock.
 - **Front-running.** A signature names its recipient, so a third party who sees it can only submit it for that recipient.
-- **Stateless verification.** `is_chip_signature_for_token` proves the chip signed `data`, not when. Callers SHOULD include a fresh random value in `data`.
+- **Stateless verification.** `is_chip_signature_for_token` proves the chip signed `data`, not when. Callers SHOULD put a fresh random value after the `pbt:verify:` tag.
 - **Royalties.** Out of scope, as in ERC-5791. A tap transfer has no on-chain price, so a royalty can only be collected if sales are routed through a contract that pays it, such as an escrow released by the chip-signed transfer.
 
 ## Reference Implementation
@@ -209,4 +232,5 @@ A consequence of following Stellar conventions is that a PBT on Stellar is not s
 
 ## Changelog
 
+- `v0.2.0`: purpose tags (`pbt:transfer:`, `pbt:verify:`); `signature_message` returns `Bytes`; optional `rotate_nonce`.
 - `v0.1.0`: initial draft.

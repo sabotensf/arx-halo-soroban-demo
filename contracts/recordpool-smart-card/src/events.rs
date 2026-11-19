@@ -30,3 +30,11 @@ pub struct CardPurchased {
     pub chip_id: BytesN<32>,
     pub price: i128,
 }
+
+/// The owner changed the chip's nonce, cancelling every unused signature.
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NonceRotated {
+    #[topic]
+    pub chip_id: BytesN<32>,
+}

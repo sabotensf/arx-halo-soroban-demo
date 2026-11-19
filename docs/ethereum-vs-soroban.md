@@ -154,7 +154,9 @@ if chip_id != expected {
 | Signed digest | EIP-191: keccak256 of `"\x19Ethereum Signed Message:\n32" ‖ hash` | SEP-53: SHA-256 of `"Stellar Signed Message:\n" ‖ message` |
 | Signature | 65 bytes `r ‖ s ‖ v` | 64 bytes `r ‖ s` plus `recovery_id`, as `secp256k1_recover` takes them |
 | Recover the signer | `ecrecover` → 20-byte address, zero on failure | `secp256k1_recover` → 65-byte public key, then SHA-256. Failure is a host error, not a silent zero. |
-| Message encoding | `abi.encode(address(this), block.chainid, nonce, to, timestamp, keccak256(extras))` | SHA-256 over XDR addresses, `network_id` instead of `chainid`, `chip_id` included. A `signature_message` view returns it, so clients don't rebuild XDR. |
+| Message encoding | `abi.encode(address(this), block.chainid, nonce, to, timestamp, keccak256(extras))` | `pbt:transfer:` tag + SHA-256 over XDR addresses, `network_id` instead of `chainid`, `chip_id` included. A `signature_message` view returns it, so clients don't rebuild XDR. |
+| Purpose separation | None: an `isChipSignatureForToken` challenge and a transfer use the same digest | Transfers sign `pbt:transfer:…`, authenticity checks `pbt:verify:…`, so one can't be used as the other |
+| Cancelling signatures | None | The owner can call `rotate_nonce` |
 | Freshness | `block.timestamp` window | Ledger timestamp window (`max_duration_window`) |
 | Nonce rotation | XOR with `blockhash(block.number - 1)` | `SHA-256(digest ‖ prng)`: Soroban contracts can't read a block hash |
 | Interface detection | ERC-165 `supportsInterface` | The contract spec in the WASM |

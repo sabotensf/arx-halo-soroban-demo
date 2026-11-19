@@ -12,7 +12,7 @@ use stellar_tokens::non_fungible::{
 
 use crate::{
     errors::CardError,
-    events::{CardPurchased, CardRegistered, ChipSet},
+    events::{CardPurchased, CardRegistered, ChipSet, NonceRotated},
     storage::{self, Config, Purchase},
 };
 
@@ -23,6 +23,14 @@ pub const ISSUER: Symbol = symbol_short!("issuer");
 /// `SHA-256(prefix || message)`, the same digest SEP-53 defines for Stellar
 /// keys, with their secp256k1 key instead of Ed25519.
 pub const SEP53_PREFIX: &[u8] = b"Stellar Signed Message:\n";
+
+/// Starts every message a chip signs to mint or move a token.
+pub const TRANSFER_TAG: &[u8] = b"pbt:transfer:";
+
+/// Starts every challenge a chip signs to prove a card is genuine. The two
+/// tags keep a "verify this card" signature from ever being a valid transfer
+/// signature, and the other way round.
+pub const VERIFY_TAG: &[u8] = b"pbt:verify:";
 
 /// A Physical Backed Token for RecordPool tap-to-play music cards, modelled
 /// on Ethereum's ERC-5791 and built with Stellar conventions.
@@ -43,7 +51,8 @@ impl RecordPoolSmartCard {
     ///   `issuer` role.
     /// * `payment_token` — SEP-41 token for primary sales (testnet USDC SAC).
     /// * `treasury` — receives primary-sale proceeds.
-    /// * `max_duration_window` — seconds a chip signature stays valid.
+    /// * `max_duration_window` — seconds a chip signature stays valid; must
+    ///   be greater than zero.
     #[allow(clippy::too_many_arguments)]
     pub fn __constructor(
         e: &Env,
@@ -55,6 +64,9 @@ impl RecordPoolSmartCard {
         name: String,
         symbol: String,
     ) {
+        if max_duration_window == 0 {
+            panic_with_error!(e, CardError::InvalidWindow);
+        }
         Base::set_metadata(e, base_uri, name, symbol);
 
         access_control::set_admin(e, &admin);
@@ -86,8 +98,14 @@ impl RecordPoolSmartCard {
     /// `SHA-256("Stellar Signed Message:\n" || data)`. Read-only: run it as a
     /// simulation.
     ///
-    /// Signatures that can't be recovered at all make the host trap instead
-    /// of returning false.
+    /// `data` must start with [`VERIFY_TAG`] (`pbt:verify:`), followed by a
+    /// fresh random challenge: the signature proves who signed, not when.
+    ///
+    /// Fails instead of returning false when:
+    /// * `data` doesn't start with `pbt:verify:` (`InvalidVerificationData`);
+    /// * `token_id` has no chip (`UnknownToken`);
+    /// * `recovery_id` isn't 0 or 1 (`InvalidSignatureFormat`);
+    /// * the signature can't be recovered at all (the host traps).
     pub fn is_chip_signature_for_token(
         e: &Env,
         token_id: u32,
@@ -95,6 +113,9 @@ impl RecordPoolSmartCard {
         chip_signature: BytesN<64>,
         recovery_id: u32,
     ) -> bool {
+        if !starts_with(&data, VERIFY_TAG) {
+            panic_with_error!(e, CardError::InvalidVerificationData);
+        }
         let chip_id = storage::get_chip_for_token(e, token_id);
         let digest = sep53_digest(e, &data);
         recover_chip_id(e, &digest, &chip_signature, recovery_id) == chip_id
@@ -129,24 +150,46 @@ impl RecordPoolSmartCard {
             &extras,
         );
 
+        storage::extend_card_ttl(e, &chip_id, token_id);
+
         let from = Self::owner_of(e, token_id);
         Base::update(e, Some(&from), Some(&to), token_id);
-        Enumerable::remove_from_owner_enumeration(e, &from, token_id);
-        Enumerable::add_to_owner_enumeration(e, &to, token_id);
+        // A tap naming the current owner uses up the signature but moves
+        // nothing; the owner's enumeration stays as it is (as in
+        // OpenZeppelin's `Enumerable::transfer`).
+        if from != to {
+            Enumerable::remove_from_owner_enumeration(e, &from, token_id);
+            Enumerable::add_to_owner_enumeration(e, &to, token_id);
+        }
         emit_transfer(e, &from, &to, token_id);
         token_id
+    }
+
+    /// Lets the token's owner cancel every chip signature made so far but not
+    /// yet used, for example after lending the card to someone, by changing
+    /// the chip's nonce. Needs the owner's wallet signature.
+    pub fn rotate_nonce(e: &Env, chip_id: BytesN<32>) {
+        storage::extend_instance_ttl(e);
+        let token_id = Self::token_id_for_chip(e, chip_id.clone());
+        Self::owner_of(e, token_id).require_auth();
+
+        let mut seed: Bytes = storage::get_chip_nonce(e, &chip_id).into();
+        seed.append(&e.prng().gen::<BytesN<32>>().into());
+        storage::set_chip_nonce(e, &chip_id, &e.crypto().sha256(&seed).into());
+        NonceRotated { chip_id }.publish(e);
     }
 
     // ------------------------------------------------------------------
     // Signing helpers (views)
     // ------------------------------------------------------------------
 
-    /// The 32-byte message the chip must sign for `transfer_token` or
+    /// The 45-byte message the chip must sign for `transfer_token` or
     /// `purchase`:
     ///
     /// ```text
-    /// SHA-256( contract || network_id || chip_id || chip_nonce || to
-    ///          || signature_timestamp (u64, big-endian) || SHA-256(extras) )
+    /// "pbt:transfer:" || SHA-256( contract || network_id || chip_id
+    ///     || chip_nonce || to || signature_timestamp (u64, big-endian)
+    ///     || SHA-256(extras) )
     /// ```
     /// where `contract` and `to` are XDR-encoded `ScVal` addresses. The chip
     /// signs it the SEP-53 way: the digest is
@@ -158,7 +201,7 @@ impl RecordPoolSmartCard {
         chip_id: BytesN<32>,
         signature_timestamp: u64,
         extras: Bytes,
-    ) -> BytesN<32> {
+    ) -> Bytes {
         let mut msg = e.current_contract_address().to_xdr(e);
         msg.append(&e.ledger().network_id().into());
         msg.append(&chip_id.clone().into());
@@ -166,7 +209,9 @@ impl RecordPoolSmartCard {
         msg.append(&to.to_xdr(e));
         msg.append(&Bytes::from_array(e, &signature_timestamp.to_be_bytes()));
         msg.append(&e.crypto().sha256(&extras).into());
-        e.crypto().sha256(&msg).into()
+        let mut tagged = Bytes::from_slice(e, TRANSFER_TAG);
+        tagged.append(&e.crypto().sha256(&msg).into());
+        tagged
     }
 
     /// The nonce the chip's next signature must cover.
@@ -186,7 +231,8 @@ impl RecordPoolSmartCard {
     /// Adds a manufactured card to the sellable inventory. `chip_id` is
     /// SHA-256 of the chip's uncompressed key-slot-1 public key (libhalo
     /// `get_pkeys` → `publicKeys["1"]`). `music_url` is the track the card
-    /// plays once it has been sold.
+    /// plays once it has been sold, and must be an `http://` or `https://`
+    /// URL.
     #[only_role(operator, "issuer")]
     pub fn register_card(
         e: &Env,
@@ -199,7 +245,7 @@ impl RecordPoolSmartCard {
         if price <= 0 {
             panic_with_error!(e, CardError::InvalidPrice);
         }
-        if music_url.is_empty() {
+        if !is_http_url(&music_url) {
             panic_with_error!(e, CardError::InvalidMusicUrl);
         }
         if storage::is_known_chip(e, &chip_id) {
@@ -313,6 +359,22 @@ fn sep53_digest(e: &Env, message: &Bytes) -> Hash<32> {
     e.crypto().sha256(&prefixed)
 }
 
+fn starts_with(data: &Bytes, prefix: &[u8]) -> bool {
+    data.len() >= prefix.len() as u32
+        && prefix
+            .iter()
+            .enumerate()
+            .all(|(i, b)| data.get_unchecked(i as u32) == *b)
+}
+
+/// True for `http://…` and `https://…` URLs (scheme in lower case), the
+/// only ones the tap page plays.
+fn is_http_url(url: &String) -> bool {
+    let bytes = url.to_bytes();
+    (starts_with(&bytes, b"http://") && bytes.len() > 7)
+        || (starts_with(&bytes, b"https://") && bytes.len() > 8)
+}
+
 /// Recovers the chip id (SHA-256 of the uncompressed public key) of the key
 /// that made `signature` (64 bytes r || s).
 fn recover_chip_id(
@@ -355,14 +417,16 @@ fn consume_chip_signature(
         signature_timestamp,
         extras.clone(),
     );
-    let digest = sep53_digest(e, &message.into());
+    let digest = sep53_digest(e, &message);
     if recover_chip_id(e, &digest, signature, recovery_id) != *chip_id {
         panic_with_error!(e, CardError::InvalidSignature);
     }
 
     // ERC-5791 mixes in the previous block hash; Soroban contracts can't read
-    // one, so mix in the per-invocation PRNG to keep the next nonce
-    // unpredictable.
+    // one, so mix in the per-invocation PRNG instead. That only stops the next
+    // nonce being worked out before this transaction runs: once stored it's
+    // public (`chip_nonce`), so a chip can be asked to pre-sign for it.
+    // `rotate_nonce` lets the owner cancel such signatures.
     let mut seed: Bytes = digest.to_bytes().into();
     seed.append(&e.prng().gen::<BytesN<32>>().into());
     storage::set_chip_nonce(e, chip_id, &e.crypto().sha256(&seed).into());

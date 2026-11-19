@@ -76,11 +76,20 @@ const bytesToHex = (b) => Array.from(b, (x) => x.toString(16).padStart(2, "0")).
 // secp256k1: decompress a 33-byte key to the 65-byte form the contract hashes.
 const P = 2n ** 256n - 2n ** 32n - 977n;
 const modPow = (b, e, m) => { let r = 1n; b %= m; for (; e > 0n; e >>= 1n, b = (b * b) % m) if (e & 1n) r = (r * b) % m; return r; };
+const INVALID_KEY = "This card's key isn't valid. Tap the card again.";
+const onCurve = (x, y) => x < P && y < P && (y * y) % P === (x ** 3n + 7n) % P;
 function uncompressed(key) {
-  if (key.length === 65 && key[0] === 4) return key;
-  if (key.length !== 33 || (key[0] !== 2 && key[0] !== 3)) throw new Error("unexpected public key length");
+  if (key.length === 65 && key[0] === 4) {
+    const x = BigInt("0x" + bytesToHex(key.slice(1, 33)));
+    const y = BigInt("0x" + bytesToHex(key.slice(33)));
+    if (!onCurve(x, y)) throw new Error(INVALID_KEY);
+    return key;
+  }
+  if (key.length !== 33 || (key[0] !== 2 && key[0] !== 3)) throw new Error(INVALID_KEY);
   const x = BigInt("0x" + bytesToHex(key.slice(1)));
+  if (x >= P) throw new Error(INVALID_KEY);
   let y = modPow((x ** 3n + 7n) % P, (P + 1n) / 4n, P);
+  if (!onCurve(x, y)) throw new Error(INVALID_KEY); // no square root: x isn't on the curve
   if ((y & 1n) !== BigInt(key[0] & 1)) y = P - y;
   return hexToBytes("04" + bytesToHex(key.slice(1)) + y.toString(16).padStart(64, "0"));
 }
@@ -88,7 +97,7 @@ function uncompressed(key) {
 // HaLo "static" blob: [len][key][len][key]…, key 1 first.
 function firstKeyFromStatic(blob) {
   const len = blob[0];
-  if (!len) throw new Error("empty static blob");
+  if (!len || blob.length < 1 + len) throw new Error(INVALID_KEY);
   return blob.slice(1, 1 + len);
 }
 
@@ -133,9 +142,19 @@ function show(title, html, meta = "") {
   $("meta").innerHTML = meta;
 }
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-const usdc = (units) => (Number(units) / 10 ** USDC_DECIMALS).toFixed(2);
+// Exact USDC amount from stroops (i128 as BigInt): at least 2 decimals, more only if needed.
+function usdc(units) {
+  const n = BigInt(units), unit = 10n ** BigInt(USDC_DECIMALS);
+  const sign = n < 0n ? "-" : "", abs = n < 0n ? -n : n;
+  const frac = (abs % unit).toString().padStart(USDC_DECIMALS, "0").replace(/0+$/, "").padEnd(2, "0");
+  return `${sign}${abs / unit}.${frac}`;
+}
 
 async function main() {
+  if (typeof StellarSdk === "undefined") {
+    return show("Can't reach Stellar",
+      `<p class="error">Couldn't load the Stellar SDK. Check your connection and tap the card again.</p>`);
+  }
   const params = new URLSearchParams(location.search);
   const contractId = params.get("contract") || DEFAULT_CONTRACT;
   let chipId;
