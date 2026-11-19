@@ -318,7 +318,7 @@ python3 -m http.server -d web 8000
 - As a tap would open it, with the card's public key: <http://localhost:8000/?pk1=04043aceae969469a336c872108a2aeb7a6a790a70bf044a20a579be7d3ba0cb0743006d866a2575c71bab5b8fde87a2adbde4c2a05f405a130af230d592f13ba2>
 - With the `chip_id` directly: <http://localhost:8000/?chip=e39a351a4943d18a82a1ea831ed0260086af6a60c65e7dd524db068317f0b528>
 
-With a real card, [`web/index.html`](web/index.html) is the page a plain tap opens: program the chip's URL to point at it (wherever it's hosted), and HaLo appends the chip's public key as `pk1` (or in a `static` blob). The page computes `chip_id = SHA-256(public key)`, calls `music_url` as a read-only simulation, and plays the track in an `<audio>` player. It needs no wallet and sends no transaction. `demo.sh` prints this link for the card it creates (shown here split across lines):
+With a real card, [`web/index.html`](web/index.html) is the page a plain tap opens: program the chip's URL to point at it (wherever it's hosted), and HaLo appends the chip's public key as `pk1` (or in a `static` blob). The page computes `chip_id = SHA-256(public key)`, calls `music_url` as a read-only simulation, and plays the track in an `<audio>` player. It needs no wallet and sends no transaction. It reads the contract ID from `web/testnet.json`, a symlink to the deployment record `deploy-testnet.sh` writes, so a redeploy needs no edit to the page; `?contract=C…` overrides it. If you host `web/` somewhere that doesn't follow symlinks, copy the file instead. `demo.sh` prints this link for the card it creates (shown here split across lines):
 
 ```text
 http://localhost:8000/
@@ -365,6 +365,7 @@ Running the demo:
 | [`web/index.html`](web/index.html) | tap-to-play page: chip key from the tap URL → `music_url` → audio player |
 | [`web/star-dust.mp3`](web/star-dust.mp3) | the demo card's track |
 | [`web/meta/0`](web/meta/0) | token 0's metadata (`token_uri`), served locally |
+| [`web/testnet.json`](web/testnet.json) | symlink to `deployments/testnet.json`; the tap page reads the contract ID from it |
 | [`scripts/`](scripts/) | `deploy-testnet.sh`, `demo.sh`, `common.sh` |
 | [`deployments/testnet.json`](deployments/testnet.json) | live deployment record |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | design rationale: data structures, threat model, trade-offs |

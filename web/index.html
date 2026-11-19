@@ -59,7 +59,16 @@
 <script src="https://cdn.jsdelivr.net/npm/@stellar/stellar-sdk@14.6.1/dist/stellar-sdk.min.js"></script>
 <script>
 // ---- config -----------------------------------------------------------
-const DEFAULT_CONTRACT = "CBVVV5ETC2PJL5V5FHWYVGHBGPMC2NC2B6FWRXKRHB4XT7YLULWRKA73";
+// The deployed contract comes from the deployment record deploy-testnet.sh writes
+// (web/testnet.json links to deployments/testnet.json). ?contract=C… overrides it.
+const DEPLOYMENT_RECORD = "testnet.json";
+async function deployedContract() {
+  const res = await fetch(DEPLOYMENT_RECORD, { cache: "no-store" });
+  if (!res.ok) throw new Error(`couldn't load ${DEPLOYMENT_RECORD} (HTTP ${res.status})`);
+  const { contract_id } = await res.json();
+  if (!/^C[A-Z2-7]{55}$/.test(contract_id || "")) throw new Error(`${DEPLOYMENT_RECORD} has no valid contract_id`);
+  return contract_id;
+}
 const RPC_URL = "https://soroban-testnet.stellar.org";
 const USDC_DECIMALS = 7;
 // Source account for read-only simulations (the SDK's own NULL_ACCOUNT).
@@ -156,7 +165,14 @@ async function main() {
       `<p class="error">Couldn't load the Stellar SDK. Check your connection and tap the card again.</p>`);
   }
   const params = new URLSearchParams(location.search);
-  const contractId = params.get("contract") || DEFAULT_CONTRACT;
+  let contractId = params.get("contract");
+  if (!contractId) {
+    try {
+      contractId = await deployedContract();
+    } catch (e) {
+      return show("Can't find the contract", `<p class="error">${esc(e.message)}</p>`);
+    }
+  }
   let chipId;
   try {
     chipId = await chipIdFrom(params);
