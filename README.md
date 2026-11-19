@@ -16,7 +16,7 @@ This repo adds the physical-backed-token logic: pairing chips with tokens, chip-
 | | |
 |---|---|
 | **Network** | Stellar testnet |
-| **Contract** | [`CBVVV5ETC2PJL5V5FHWYVGHBGPMC2NC2B6FWRXKRHB4XT7YLULWRKA73`](https://stellar.expert/explorer/testnet/contract/CBVVV5ETC2PJL5V5FHWYVGHBGPMC2NC2B6FWRXKRHB4XT7YLULWRKA73) |
+| **Contract** | [`CATWP7NFVDA2CRHWYFUSCULX7R7HDCYPQYXE7XFHW7R3RBK7VBZN65HO`](https://stellar.expert/explorer/testnet/contract/CATWP7NFVDA2CRHWYFUSCULX7R7HDCYPQYXE7XFHW7R3RBK7VBZN65HO) |
 | **Payment token** | Circle testnet USDC — SAC [`CBIELTK6…DAMA`](https://stellar.expert/explorer/testnet/contract/CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA) (`USDC:GBBD47IF…LFLA5`) |
 | **Standard** | [Draft SEP: Physical Backed Tokens](docs/sep-draft-physical-backed-tokens.md), modelled on [ERC-5791](https://eips.ethereum.org/EIPS/eip-5791); chip signatures use the [SEP-53](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0053.md) message format |
 | **Hardware** | [Arx Research HaLo](https://arx-docs.vercel.app/HaLo/specifications) NFC chips (secp256k1, key slot 1), read with [libhalo](https://github.com/arx-research/libhalo) |
@@ -315,8 +315,8 @@ You can hear the demo card without a HaLo chip. Serve the `web` folder on port 8
 python3 -m http.server -d web 8000
 ```
 
-- As a tap would open it, with the card's public key: <http://localhost:8000/?pk1=04043aceae969469a336c872108a2aeb7a6a790a70bf044a20a579be7d3ba0cb0743006d866a2575c71bab5b8fde87a2adbde4c2a05f405a130af230d592f13ba2>
-- With the `chip_id` directly: <http://localhost:8000/?chip=e39a351a4943d18a82a1ea831ed0260086af6a60c65e7dd524db068317f0b528>
+- As a tap would open it, with the card's public key: <http://localhost:8000/?pk1=04082489ac314d5e0d4af494028e69c250fb4a458fe2adba5e88da0d2f5a1e6d14b00d11acd749486aa589b4a92e9383f090f7347fed11da98dec18fc1db1addd9>
+- With the `chip_id` directly: <http://localhost:8000/?chip=7bd9abe8cbab7b9500adf771f26d73b4cfcd8ada04913404b48628b01c930148>
 
 With a real card, [`web/index.html`](web/index.html) is the page a plain tap opens: program the chip's URL to point at it (wherever it's hosted), and HaLo appends the chip's public key as `pk1` (or in a `static` blob). The page computes `chip_id = SHA-256(public key)`, calls `music_url` as a read-only simulation, and plays the track in an `<audio>` player. It needs no wallet and sends no transaction. It reads the contract ID from `web/testnet.json`, a symlink to the deployment record `deploy-testnet.sh` writes, so a redeploy needs no edit to the page; `?contract=C…` overrides it. If you host `web/` somewhere that doesn't follow symlinks, copy the file instead. `demo.sh` prints this link for the card it creates (shown here split across lines):
 
@@ -330,13 +330,13 @@ http://localhost:8000/
 
 | Step | Transaction |
 |---|---|
-| Deploy (constructor, `max_duration_window` = 600 s) | [`5fdadd84…`](https://stellar.expert/explorer/testnet/tx/5fdadd84ef3d33dc885125d99620d4696152ca6dcc187ce72b88baa79f26c1a4) |
-| `register_card` — chip `e39a351a…`, 5 USDC, track `http://localhost:8000/star-dust.mp3` | [`23854340…`](https://stellar.expert/explorer/testnet/tx/238543409383c599bfbb10a603a37b739bae8e886871dbca3f60d532df36b430) |
-| `purchase` — chip-signed mint + USDC payment, one tx (`ChipSet` event); returns `token_id` 0 and the track URL | [`fa101ccd…`](https://stellar.expert/explorer/testnet/tx/fa101ccd8a0e179ca712a970c3647c46bbf9ac675e556f7fbd76a3948691fee7) |
+| Deploy (constructor, `max_duration_window` = 600 s) | [`8fd847b0…`](https://stellar.expert/explorer/testnet/tx/8fd847b05a2a1f30478ed1735f15cf92bf395b1c78fe13302cd67fbe797f3203) |
+| `register_card` — chip `7bd9abe8…`, 5 USDC, track `http://localhost:8000/star-dust.mp3` | [`4cdfda8d…`](https://stellar.expert/explorer/testnet/tx/4cdfda8d851963bb9deaf0b9db1d515e30dc28f311afadb42c2786162c2017d0) |
+| `purchase` — chip-signed mint + USDC payment, one tx (`ChipSet` event); returns `token_id` 0 and the track URL | [`edc4d212…`](https://stellar.expert/explorer/testnet/tx/edc4d212b36ffad6a2956f49e0cf5b591f6401e1e1d0e13a1e81cd37612af2db) |
 | `music_url` — what a tap looks up: the track URL, no wallet | simulation (no tx) |
 | `is_chip_signature_for_token` — genuine chip `true`, other chip `false` | simulation (no tx) |
 | `transfer` by Alice's wallet — rejected (`TransferRequiresChip`) | simulation (no tx) |
-| `transfer_token` — Bob taps the card and takes the token | [`e1cfa8a4…`](https://stellar.expert/explorer/testnet/tx/e1cfa8a4beb9bb0cc43b92a5308a3dbc6dbac2742acd4b76b2d1c4008a129dad) |
+| `transfer_token` — Bob taps the card and takes the token | [`f4ce9f4e…`](https://stellar.expert/explorer/testnet/tx/f4ce9f4e9ebc483596e73fb2ac486dd875866ea131b7809781577dbf73c890ae) |
 | Same chip signature replayed — rejected (nonce changed) | simulation (no tx) |
 
 ## Design notes and limitations

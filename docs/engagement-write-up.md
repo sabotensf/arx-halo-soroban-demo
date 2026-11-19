@@ -113,4 +113,4 @@ Each stage of this engagement can become a standard deliverable, so the team run
 - [Architecture and threat model](../ARCHITECTURE.md)
 - [Ethereum vs Soroban assessment](ethereum-vs-soroban.md)
 - [Draft SEP: Physical Backed Tokens](sep-draft-physical-backed-tokens.md)
-- [Testnet contract](https://stellar.expert/explorer/testnet/contract/CBVVV5ETC2PJL5V5FHWYVGHBGPMC2NC2B6FWRXKRHB4XT7YLULWRKA73)
+- [Testnet contract](https://stellar.expert/explorer/testnet/contract/CATWP7NFVDA2CRHWYFUSCULX7R7HDCYPQYXE7XFHW7R3RBK7VBZN65HO)
