@@ -10,7 +10,7 @@ I ran a full partner engagement on myself: RecordPool, my phygital music platfor
 
 1. **Discovery:** what RecordPool needs, and what changes moving from EVM to Soroban.
 2. **Solution design:** a Physical Backed Token (PBT) contract, modelled on [ERC-5791](https://eips.ethereum.org/EIPS/eip-5791), with a written threat model.
-3. **Derisking:** a prototype with 26 tests, a simulated chip and a live testnet deploy.
+3. **Derisking:** a prototype with 38 tests, a simulated chip, an adversarial code review and a live testnet deploy.
 4. **Feedback to Product:** a draft SEP for chip-backed tokens, plus the tooling friction I hit.
 
 The result is a public repo a partner's engineers could fork, and a template for how I'd run engagements at the Stellar Development Foundation (SDF).
@@ -65,6 +65,8 @@ Later owners move the token with the same tap through `transfer_token`, with no 
 | Model on ERC-5791, rebuild every encoding the Stellar way | Keeps a known interface; fits [SEP-50](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0050.md) and SEP-53 | Ethereum PBT signatures won't verify here |
 | Recover the chip's key on-chain and match its SHA-256 to `chip_id` | No backend in the trust path | One recovery per tap |
 | Sign the contract, network, nonce, recipient and timestamp | Stops replay and front-running | A slow transaction can miss the 600 s window |
+| Tag every signed message by purpose (`pbt:transfer:`, `pbt:verify:`) | A "verify this card" tap can never authorise a transfer | Signatures differ from ERC-5791's format |
+| Let the owner rotate the chip's nonce (`rotate_nonce`) | Cancels transfers pre-signed while the card was lent out | Needs the owner's wallet: one extra transaction |
 | Disable wallet transfers; move tokens only by tap | Ownership follows the object | No plain marketplace transfers |
 | Keep the music URL in public storage, gated in the page | Tap to play needs no wallet or fee | Anyone can read the URL |
 | Leave royalties out, as ERC-5791 does | A tap carries no on-chain price to take a cut from | No resale royalties; an escrow is sketched in ARCHITECTURE.md |
@@ -76,10 +78,11 @@ The threat model follows assets, actors, threats, mitigations and residual risk.
 I proved the riskiest parts before any hardware: the contract is live on testnet, and the threat model's main properties each have a test.
 
 - **Simulated chip:** `halo-tool` signs the exact SEP-53 digest with k256, the same way the HaLo chip does, and converts real libhalo output (`v − 27`).
-- **Tests:** 23 contract tests and 3 tool tests. They cover counterfeit chips, buyer and recipient binding, single use, the window edges, contract binding, a bad recovery id, disabled wallet transfers, and the music URL unlocking at sale.
-- **Testnet:** deployed on 2026-11-18, paid in Circle testnet USDC. `deploy-testnet.sh` and `demo.sh` reproduce it end to end.
+- **Tests:** 35 contract tests and 3 tool tests. They cover counterfeit chips, buyer and recipient binding, single use, the window edges, contract and network binding, a bad recovery id, disabled wallet transfers, the music URL unlocking at sale, events, storage TTLs, and both signature-hardening fixes below.
+- **Code review:** an adversarial review with three independent passes (diff only, diff plus repo, and code against ARCHITECTURE.md and the SEP), then a Soroban security checklist. It found two protocol issues: an authenticity-check signature could be submitted as a transfer, and a borrowed card could pre-sign a future-dated transfer. Both are fixed with purpose tags and `rotate_nonce`, tested, and written into the draft SEP.
+- **Testnet:** redeployed on 2026-11-19 after the review, paid in Circle testnet USDC. The WASM records its source repo and commit, readable with `stellar contract info meta`. `deploy-testnet.sh` and `demo.sh` reproduce it end to end.
 - **Front end:** I ran the tap page's code in Node against the live contract, including compressed keys.
-- **CI:** builds and tests on every push.
+- **CI:** runs fmt, clippy and the tests, and builds the WASM with source metadata, on every push.
 - **Not done yet:** a security audit of this contract, and a run on a physical HaLo card. The simulated chip follows libhalo's documented `sign` output.
 
 ## Feedback to Product
@@ -88,9 +91,9 @@ The biggest gap was a missing standard, so I drafted one: [a SEP for Physical Ba
 
 | Gap | What I did | What I'd ask for |
 | --- | --- | --- |
-| SEP-50 has no extension for chip-backed tokens | Drafted the interface, the message format over SEP-53, freshness rules and security notes | Review as a SEP, so wallets and chip tooling can support any PBT contract |
+| SEP-50 has no extension for chip-backed tokens | Drafted the interface, the message format over SEP-53, freshness rules, purpose tags, optional owner nonce rotation and security notes (v0.2.0) | Review as a SEP, so wallets and chip tooling can support any PBT contract |
 | OpenZeppelin Stellar leaves contract-instance TTL to the contract | Extended the instance on every state change | A documented default or helper |
-| Testnet USDC needs its Stellar Asset Contract deployed per network | The deploy script deploys it and ignores "already exists" | A note in the USDC testnet docs |
+| Testnet USDC needs its Stellar Asset Contract deployed per network | The deploy script deploys it and treats "already exists" (`ExistingValue`) as success | A note in the USDC testnet docs |
 
 ## Scaling it into a program
 
