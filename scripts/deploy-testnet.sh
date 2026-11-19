@@ -6,7 +6,15 @@ MAX_WINDOW="${MAX_WINDOW:-600}"      # seconds a chip signature stays valid
 BASE_URI="${BASE_URI:-http://localhost:8000/meta/}"   # token_uri = base + id, served from web/meta/
 
 step "Build"
-(cd "$ROOT" && stellar contract build --package recordpool-smart-card >/dev/null)
+# Contract meta (readable with `stellar contract info meta`) ties the deployed WASM to its source.
+SOURCE_REPO="https://github.com/sabotensf/arx-halo-soroban-demo"
+COMMIT_SHA="$(git -C "$ROOT" rev-parse HEAD)"
+if [ -n "$(git -C "$ROOT" status --porcelain)" ]; then
+  echo "warning: uncommitted changes, so this build won't match commit $COMMIT_SHA" >&2
+  COMMIT_SHA="$COMMIT_SHA-dirty"
+fi
+(cd "$ROOT" && stellar contract build --package recordpool-smart-card \
+  --meta source_repo="$SOURCE_REPO" --meta commit_sha="$COMMIT_SHA" >/dev/null)
 stellar contract optimize --wasm "$WASM" --wasm-out "$WASM" >/dev/null 2>&1 || true
 ls -l "$WASM"
 
@@ -41,6 +49,8 @@ cat > "$DEPLOYMENT_FILE" <<JSON
   "payment_token": "$USDC_SAC",
   "payment_asset": "$USDC_ASSET",
   "max_duration_window": $MAX_WINDOW,
+  "source_repo": "$SOURCE_REPO",
+  "commit_sha": "$COMMIT_SHA",
   "deployed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 }
 JSON

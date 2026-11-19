@@ -22,7 +22,10 @@ jobs:
             | tar xz -C /usr/local/bin stellar
           stellar --version
       - name: Build WASM
-        run: stellar contract build --package recordpool-smart-card
+        run: >-
+          stellar contract build --package recordpool-smart-card
+          --meta source_repo=https://github.com/${{ github.repository }}
+          --meta commit_sha=${{ github.sha }}
       - uses: actions/upload-artifact@v7
         with:
           name: recordpool_smart_card.wasm
