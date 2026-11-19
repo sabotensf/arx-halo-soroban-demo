@@ -1,4 +1,4 @@
-# Arx HaLo NFC Chips on Stellar Soroban — Physical Backed Tokens (PBTs) for tap-to-play music
+# Arx HaLo NFC Chips on Stellar Soroban — PBTs (Physical Backed Tokens) for tap-to-play music
 
 > **Disclaimer:** This is an independent demo project. It is not affiliated with, endorsed by, or sponsored by Arx Research, the Stellar Development Foundation, OpenZeppelin or Circle. "HaLo" and "Arx" are referenced only to describe the NFC chips this demo is designed to work with.
 
@@ -317,10 +317,12 @@ python3 -m http.server -d web 8000
 - As a tap would open it, with the card's public key: <http://localhost:8000/?pk1=048093ae8020131eaf6ba59d1f9813650b62c996005d465498d68eb96f20f5bc6b5bbc38ae7d4d247ddb04ad1fe6b9f2d8126b4a2846ffea84a7296b126e237723>
 - With the `chip_id` directly: <http://localhost:8000/?chip=c59dbb353bc0c6f7b168587e1d96ab86476c4b79a7c59f9bb5c53e02d0b9804d>
 
-With a real card, [`web/index.html`](web/index.html) is the page a plain tap opens: program the chip's URL to point at it (wherever it's hosted), and HaLo appends the chip's public key as `pk1` (or in a `static` blob). The page computes `chip_id = SHA-256(public key)`, calls `music_url` as a read-only simulation, and plays the track in an `<audio>` player. It needs no wallet and sends no transaction. `demo.sh` prints this link for the card it creates:
+With a real card, [`web/index.html`](web/index.html) is the page a plain tap opens: program the chip's URL to point at it (wherever it's hosted), and HaLo appends the chip's public key as `pk1` (or in a `static` blob). The page computes `chip_id = SHA-256(public key)`, calls `music_url` as a read-only simulation, and plays the track in an `<audio>` player. It needs no wallet and sends no transaction. `demo.sh` prints this link for the card it creates (shown here split across lines):
 
-```bash
-# http://localhost:8000/?contract=<contract id>&pk1=<halo-tool sim-pubkey card.key>
+```text
+http://localhost:8000/
+    ?contract=<contract id>
+    &pk1=<the card's public key, from halo-tool sim-pubkey>
 ```
 
 ### Testnet run (2026-11-18)
