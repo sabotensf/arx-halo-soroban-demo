@@ -363,7 +363,7 @@ Running the demo:
 | [`contracts/recordpool-smart-card/`](contracts/recordpool-smart-card/) | Soroban contract (lib, storage, events, errors, tests) |
 | [`tools/halo-tool/`](tools/halo-tool/) | chip ids, SEP-53 digests, simulated HaLo chip |
 | [`web/index.html`](web/index.html) | tap-to-play page: chip key from the tap URL → `music_url` → audio player |
-| [`web/star-dust.mp3`](web/star-dust.mp3) | the demo card's track |
+| [`web/star-dust.mp3`](web/star-dust.mp3) | the demo card's track: *Stardust*, Isham Jones and His Orchestra (1930), from the [Internet Archive](https://archive.org/details/1930-USA-Archives-1930-05-15-Isham-Jones-Orch-Stardust). Included for demonstration only; not covered by this repository's MIT licence. |
 | [`web/meta/0`](web/meta/0) | token 0's metadata (`token_uri`), served locally |
 | [`web/testnet.json`](web/testnet.json) | symlink to `deployments/testnet.json`; the tap page reads the contract ID from it |
 | [`scripts/`](scripts/) | `deploy-testnet.sh`, `demo.sh`, `common.sh` |
