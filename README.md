@@ -1,6 +1,6 @@
 # Arx HaLo NFC Chips on Stellar Soroban — PBTs (Physical Backed Tokens) for tap-to-play music
 
-> **Disclaimer:** This is an independent demo project. It is not affiliated with, endorsed by, or sponsored by Arx Research, the Stellar Development Foundation, OpenZeppelin or Circle. "HaLo" and "Arx" are referenced only to describe the NFC chips this demo is designed to work with.
+> **Disclaimer:** This is an independent proof-of-concept project. It is not affiliated with, endorsed by, or sponsored by Arx Research, the Stellar Development Foundation, OpenZeppelin or Circle. "HaLo" and "Arx" are referenced only to describe the NFC chips this demo is designed to work with.
 
 A **RecordPool music smart card** is an NFC chip card for music: tap it on a phone and it plays.
 Each card carries a [HaLo](https://github.com/arx-research/libhalo) NFC chip with its own secp256k1 key pair, which can't be read out or copied.
@@ -341,7 +341,7 @@ http://localhost:8000/
 
 ## Design notes and limitations
 
-This is a demonstration project. It has **not been audited**. OpenZeppelin publishes audit reports for the library it builds on.
+This is a proof of concept. It has **not been audited**. OpenZeppelin publishes audit reports for the library it builds on.
 
 [ARCHITECTURE.md](ARCHITECTURE.md) explains the design decisions, the threat model and the full list of trade-offs. The main limitations:
 
