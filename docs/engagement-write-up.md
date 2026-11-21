@@ -71,7 +71,7 @@ Later owners move the token with the same tap through `transfer_token`, with no 
 | Keep the music URL in public storage, gated in the page | Tap to play needs no wallet or fee | Anyone can read the URL |
 | Leave royalties out, as ERC-5791 does | A tap carries no on-chain price to take a cut from | No resale royalties; an escrow is sketched in ARCHITECTURE.md |
 
-The threat model follows assets, actors, threats, mitigations and residual risk. It covers four assets: the token, the purchase price, the issuer role and each chip's nonce. The residual risks are stated, not hidden: anyone can read the music URL, a slow transaction can miss the time window, and `is_chip_signature_for_token` proves who signed but not when, so callers must add their own random value.
+The threat model follows assets, actors, threats, mitigations and residual risk. It covers four assets: the token, the purchase price, the issuer role and each chip's nonce. The residual risks are stated, not hidden: anyone can read the music URL, a slow transaction can miss the time window, and `is_chip_signature_for_token` proves who signed but not when, so callers must add their own random value. The same model is written up in SDF's STRIDE format in [stride-threat-model.md](stride-threat-model.md).
 
 ## Derisking
 
@@ -111,6 +111,7 @@ Each stage of this engagement can become a standard deliverable, so the team run
 
 - [Repository](https://github.com/sabotensf/arx-halo-soroban-demo)
 - [Architecture and threat model](../ARCHITECTURE.md)
+- [STRIDE threat model](stride-threat-model.md)
 - [Ethereum vs Soroban assessment](ethereum-vs-soroban.md)
 - [Draft SEP: Physical Backed Tokens](sep-draft-physical-backed-tokens.md)
 - [Testnet contract](https://stellar.expert/explorer/testnet/contract/CATWP7NFVDA2CRHWYFUSCULX7R7HDCYPQYXE7XFHW7R3RBK7VBZN65HO)
