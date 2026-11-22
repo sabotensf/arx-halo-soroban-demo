@@ -13,7 +13,7 @@ Discussion: To be opened
 
 ## Simple Summary
 
-A standard interface for non-fungible tokens that are paired with a chip embedded in a physical item, where the chip, not a wallet, authorises minting and every transfer. It takes Ethereum's [ERC-5791](https://eips.ethereum.org/EIPS/eip-5791) as its model and specifies it with Stellar conventions, as an extension of [SEP-50](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0050.md) non-fungible tokens, with chip signatures over [SEP-53](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0053.md) message digests.
+A standard interface for non-fungible tokens that are paired with a chip embedded in a physical item, where the chip, not a wallet, authorizes minting and every transfer. It takes Ethereum's [ERC-5791](https://eips.ethereum.org/EIPS/eip-5791) as its model and specifies it with Stellar conventions, as an extension of [SEP-50](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0050.md) non-fungible tokens, with chip signatures over [SEP-53](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0053.md) message digests.
 
 ## Dependencies
 
@@ -26,16 +26,16 @@ A standard interface for non-fungible tokens that are paired with a chip embedde
 
 NFC chips with secure, non-extractable keys (such as Arx HaLo) let a physical item prove it is present by signing a message when tapped. Pairing such a chip with a token gives physical goods (collectibles, merchandise, tickets, luxury items, music cards) an on-chain record whose ownership **follows the item**: hand someone the item, they tap it, and the token is theirs.
 
-Ethereum standardised this pattern as ERC-5791 ("Physical Backed Tokens", PBT). Stellar's NFT standard (SEP-50) has no physical-backed extension, and SEP-39 covers only classic-asset NFT conventions. Without a shared interface, every Soroban project that binds tokens to chips invents its own message format, which prevents wallets, marketplaces and chip tooling from supporting them generically.
+Ethereum standardized this pattern as ERC-5791 ("Physical Backed Tokens", PBT). Stellar's NFT standard (SEP-50) has no physical-backed extension, and SEP-39 covers only classic-asset NFT conventions. Without a shared interface, every Soroban project that binds tokens to chips invents its own message format, which prevents wallets, marketplaces and chip tooling from supporting them generically.
 
-This SEP defines that interface. It keeps ERC-5791's model (chip-authorised transfers, disabled wallet transfers, signatures bound to recipient, nonce and time) and specifies every encoding the Stellar way: SHA-256 hashing, SEP-53 message digests, XDR addresses and the network ID.
+This SEP defines that interface. It keeps ERC-5791's model (chip-authorized transfers, disabled wallet transfers, signatures bound to recipient, nonce and time) and specifies every encoding the Stellar way: SHA-256 hashing, SEP-53 message digests, XDR addresses and the network ID.
 
 ## Abstract
 
 A Physical Backed Token (PBT) contract:
 
 - pairs each token with exactly one chip, identified by a 32-byte `chip_id`;
-- moves a token only through `transfer_token`, authorised by a fresh chip signature naming the recipient;
+- moves a token only through `transfer_token`, authorized by a fresh chip signature naming the recipient;
 - disables the SEP-50 `transfer` and `transfer_from` functions;
 - binds every chip signature to the contract, the network, a per-chip nonce, the recipient, a timestamp and optional extra data, so a signature cannot be replayed across contracts, networks or uses;
 - lets anyone verify a chip signature over a tagged challenge (`pbt:verify:` followed by caller-chosen data) for a given token;
@@ -79,11 +79,11 @@ A chip key signs two kinds of message: transfer messages, which move a token, an
 | Mint or transfer | `pbt:transfer:` (13 bytes, ASCII) |
 | Authenticity check | `pbt:verify:` (11 bytes, ASCII) |
 
-Without the tags, a page asking the holder to "verify" their card could present a transfer message as its challenge, and the tap would authorise the transfer.
+Without the tags, a page asking the holder to "verify" their card could present a transfer message as its challenge, and the tap would authorize the transfer.
 
 ### Transfer message
 
-The message a chip signs to authorise a mint or transfer to `to` is:
+The message a chip signs to authorize a mint or transfer to `to` is:
 
 ```
 message = "pbt:transfer:"
@@ -141,8 +141,8 @@ pub trait PhysicalBackedToken: NonFungibleToken /* SEP-50 */ {
     ) -> bool;
 
     /// Moves the token paired with `chip_id` from its current owner to `to`,
-    /// authorised only by a chip signature over `signature_message(to, chip_id,
-    /// signature_timestamp, extras)`. MUST NOT require any wallet authorisation.
+    /// authorized only by a chip signature over `signature_message(to, chip_id,
+    /// signature_timestamp, extras)`. MUST NOT require any wallet authorization.
     /// MUST emit the SEP-50 `transfer` event.
     fn transfer_token(
         e: &Env,
@@ -171,7 +171,7 @@ pub trait PhysicalBackedToken: NonFungibleToken /* SEP-50 */ {
 /// OPTIONAL, RECOMMENDED: lets the owner cancel unused chip signatures.
 pub trait PhysicalBackedTokenNonceRotation: PhysicalBackedToken {
     /// Replaces the chip's nonce, so every signature made but not yet used
-    /// stops verifying. MUST require the authorisation of the token's owner.
+    /// stops verifying. MUST require the authorization of the token's owner.
     /// SHOULD emit `NonceRotated`.
     fn rotate_nonce(e: &Env, chip_id: BytesN<32>);
 }
@@ -181,7 +181,7 @@ The SEP-50 `transfer` and `transfer_from` functions MUST fail. `approve` and `ap
 
 ### Minting
 
-Minting is implementation-defined, as in ERC-5791, with one requirement: a token MUST NOT be minted unless it is paired with a chip, and the recipient SHOULD be authorised by a chip signature over the transfer message (with `to` set to the recipient). A minting function MAY collect payment in the same transaction.
+Minting is implementation-defined, as in ERC-5791, with one requirement: a token MUST NOT be minted unless it is paired with a chip, and the recipient SHOULD be authorized by a chip signature over the transfer message (with `to` set to the recipient). A minting function MAY collect payment in the same transaction.
 
 ### Events
 
@@ -193,7 +193,7 @@ pub struct ChipSet {
     #[topic] pub chip_id: BytesN<32>,
 }
 
-/// The owner cancelled every unused signature for a chip (`rotate_nonce`).
+/// The owner canceled every unused signature for a chip (`rotate_nonce`).
 /// Topics: ["nonce_rotated", chip_id].
 #[contractevent]
 pub struct NonceRotated {
@@ -201,7 +201,7 @@ pub struct NonceRotated {
 }
 ```
 
-Transfers emit the SEP-50 `transfer` event and mints the SEP-50 `mint` event. Contracts that implement `rotate_nonce` SHOULD emit `NonceRotated`, so indexers and wallets can show that a chip's pending signatures were cancelled.
+Transfers emit the SEP-50 `transfer` event and mints the SEP-50 `mint` event. Contracts that implement `rotate_nonce` SHOULD emit `NonceRotated`, so indexers and wallets can show that a chip's pending signatures were canceled.
 
 ### Interface discovery
 
@@ -209,7 +209,7 @@ Following SEP-47, a PBT contract SHOULD declare the SEPs it implements in a `sep
 
 ## Design Rationale
 
-ERC-5791 is the model for the behaviour; every encoding follows Stellar conventions instead.
+ERC-5791 is the model for the behavior; every encoding follows Stellar conventions instead.
 
 | ERC-5791 | This SEP | Why |
 |---|---|---|

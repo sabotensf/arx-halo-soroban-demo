@@ -9,7 +9,7 @@
 I ran a full partner engagement on myself: RecordPool, my phygital music platform on Ethereum, as the partner, and Stellar as the target. In four stages I went from discovery to a working testnet integration, and fed one standards gap back as a draft SEP.
 
 1. **Discovery:** what RecordPool needs, and what changes moving from EVM to Soroban.
-2. **Solution design:** a Physical Backed Token (PBT) contract, modelled on [ERC-5791](https://eips.ethereum.org/EIPS/eip-5791), with a threat model in SDF's STRIDE format.
+2. **Solution design:** a Physical Backed Token (PBT) contract, modeled on [ERC-5791](https://eips.ethereum.org/EIPS/eip-5791), with a threat model in SDF's STRIDE format.
 3. **Derisking:** a prototype with 38 tests, a simulated chip, an adversarial code review and a live testnet deploy.
 4. **Feedback to Product:** a draft SEP for chip-backed tokens, plus the tooling friction I hit.
 
@@ -65,7 +65,7 @@ Later owners move the token with the same tap through `transfer_token`, with no 
 | Model on ERC-5791, rebuild every encoding the Stellar way | Keeps a known interface; fits [SEP-50](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0050.md) and SEP-53 | Ethereum PBT signatures won't verify here |
 | Recover the chip's key on-chain and match its SHA-256 to `chip_id` | No backend in the trust path | One recovery per tap |
 | Sign the contract, network, nonce, recipient and timestamp | Stops replay and front-running | A slow transaction can miss the 600 s window |
-| Tag every signed message by purpose (`pbt:transfer:`, `pbt:verify:`) | A "verify this card" tap can never authorise a transfer | Signatures differ from ERC-5791's format |
+| Tag every signed message by purpose (`pbt:transfer:`, `pbt:verify:`) | A "verify this card" tap can never authorize a transfer | Signatures differ from ERC-5791's format |
 | Let the owner rotate the chip's nonce (`rotate_nonce`) | Cancels transfers pre-signed while the card was lent out | Needs the owner's wallet: one extra transaction |
 | Disable wallet transfers; move tokens only by tap | Ownership follows the object | No plain marketplace transfers |
 | Keep the music URL in public storage, gated in the page | Tap to play needs no wallet or fee | Anyone can read the URL |

@@ -6,7 +6,7 @@
 
 ## What are we working on?
 
-A Soroban contract that sells and transfers Physical Backed Tokens (PBTs), modelled on [ERC-5791](https://eips.ethereum.org/EIPS/eip-5791). Each token is paired with an Arx HaLo NFC card, which holds a secp256k1 key that never leaves the chip.
+A Soroban contract that sells and transfers Physical Backed Tokens (PBTs), modeled on [ERC-5791](https://eips.ethereum.org/EIPS/eip-5791). Each token is paired with an Arx HaLo NFC card, which holds a secp256k1 key that never leaves the chip.
 
 - **Register:** an account with the `issuer` role registers a card's `chip_id` (the SHA-256 of its public key), price and music URL.
 - **Purchase:** the buyer taps the card. The chip signs a [SEP-53](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0053.md) message naming the contract, network, chip nonce, buyer and timestamp. The buyer submits it with one wallet signature, which also authorizes the USDC payment through the Stellar Asset Contract. The contract recovers the chip's key, checks it against `chip_id`, rotates the nonce, takes payment and mints the token.

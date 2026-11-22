@@ -32,7 +32,7 @@ pub const TRANSFER_TAG: &[u8] = b"pbt:transfer:";
 /// signature, and the other way round.
 pub const VERIFY_TAG: &[u8] = b"pbt:verify:";
 
-/// A Physical Backed Token for RecordPool tap-to-play music cards, modelled
+/// A Physical Backed Token for RecordPool tap-to-play music cards, modeled
 /// on Ethereum's ERC-5791 and built with Stellar conventions.
 ///
 /// Each token is paired with the HaLo NFC chip inside one physical card, and
@@ -44,7 +44,7 @@ pub struct RecordPoolSmartCard;
 
 #[contractimpl]
 impl RecordPoolSmartCard {
-    /// Deploy-time initialisation (Soroban constructors run atomically with
+    /// Deploy-time initialization (Soroban constructors run atomically with
     /// deployment, so there is no separate `initialize` to front-run).
     ///
     /// * `admin` — receives the OpenZeppelin AccessControl admin role and the
@@ -123,7 +123,7 @@ impl RecordPoolSmartCard {
 
     /// Moves the token paired with `chip_id` from its current owner to `to`.
     ///
-    /// Authorised only by the chip: `chip_signature` must sign
+    /// Authorized only by the chip: `chip_signature` must sign
     /// [`signature_message`](Self::signature_message) for this `to`,
     /// `signature_timestamp` and `extras`, and the timestamp must be within
     /// `max_duration_window` of the ledger time. Each signature works once,
@@ -258,7 +258,7 @@ impl RecordPoolSmartCard {
 
     /// Buys a registered card. The buyer must hold it: the chip signs a mint
     /// to `buyer` (same message as `transfer_token`), the buyer's wallet
-    /// authorises the USDC payment, and the token is minted and paired with
+    /// authorizes the USDC payment, and the token is minted and paired with
     /// the chip, all in one atomic transaction. Returns the new token id and
     /// the card's music URL.
     #[allow(clippy::too_many_arguments)]
@@ -390,7 +390,7 @@ fn recover_chip_id(
     e.crypto().sha256(&pubkey.into()).into()
 }
 
-/// Checks a chip signature authorising a mint or transfer to `to`, then
+/// Checks a chip signature authorizing a mint or transfer to `to`, then
 /// rotates the chip's nonce so the signature can't be used again.
 fn consume_chip_signature(
     e: &Env,

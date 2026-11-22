@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end lifecycle of one RecordPool card as a Physical Backed Token (modelled on ERC-5791) on testnet:
+# End-to-end lifecycle of one RecordPool card as a Physical Backed Token (modeled on ERC-5791) on testnet:
 #   register -> tap + pay USDC to buy -> tap to play -> prove authenticity -> hand the card over -> tap to transfer
 source "$(dirname "$0")/common.sh"
 

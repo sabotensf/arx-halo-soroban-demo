@@ -23,7 +23,7 @@ Each RecordPool card carries a HaLo NFC chip with a secp256k1 key that can't be 
 |---|---|
 | Ownership follows the physical object | Every mint and transfer needs a fresh chip signature; wallet transfers are disabled. |
 | No trusted backend | Signatures are verified on-chain with the `secp256k1_recover` host function. No server holds keys or approves transfers. |
-| Stellar conventions throughout | SHA-256, SEP-53 message digests, XDR addresses and the network ID; ERC-5791 is the model for behaviour, not for encodings. |
+| Stellar conventions throughout | SHA-256, SEP-53 message digests, XDR addresses and the network ID; ERC-5791 is the model for behavior, not for encodings. |
 | One-signature checkout | The buyer's wallet signs one authorization tree covering `purchase` and the nested USDC transfer. |
 | Reuse audited code | Token ownership, enumeration and roles come from OpenZeppelin Stellar Contracts; only the PBT logic is custom. |
 | Playable by anyone | `music_url` is a read-only view, called as a free simulation from a static page. |
@@ -58,7 +58,7 @@ stateDiagram-v2
 ```
 
 - **Unknown (no entries) → Pending**: `register_card` (issuer role). Rejected if the chip is already Pending or Minted, so a chip can never be registered twice, even after it's sold.
-- **Pending → Minted**: `purchase`. The chip signs a mint to the buyer, the buyer's wallet authorises the payment, the token is minted and the chip is paired with it. If any step fails, nothing changes.
+- **Pending → Minted**: `purchase`. The chip signs a mint to the buyer, the buyer's wallet authorizes the payment, the token is minted and the chip is paired with it. If any step fails, nothing changes.
 - **Minted → Minted**: `transfer_token`. The owner changes; the pairing never does.
 
 There's no transition out of Minted: no burn, no unpairing and no chip replacement.
@@ -147,7 +147,7 @@ Each field closes off one attack:
 - **The owner can rotate the nonce.** Whoever holds the card can have it sign a transfer dated in the future, then give the card back. `rotate_nonce` changes the nonce, which cancels every signature not yet used. It needs the owner's wallet, so it can't be used to move the token.
 - **A nonce and a time window, not one or the other.** The nonce stops reuse after a signature is accepted. The window stops a signature that was captured but never submitted. 600 s on testnet leaves room for a phone round trip without leaving a captured signature useful for long.
 - **`transfer_token` needs no wallet authorization.** The chip signature is the authorization, and it names `to`, so anyone can submit it (usually the recipient) and a front-runner can only complete the transfer as signed.
-- **`purchase` needs both the chip and the buyer's wallet.** The chip proves the card is present; the wallet authorises the payment. Both are bound to the same `buyer`.
+- **`purchase` needs both the chip and the buyer's wallet.** The chip proves the card is present; the wallet authorizes the payment. Both are bound to the same `buyer`.
 - **The USDC transfer is nested in `purchase`.** Soroban's authorization tree lets the buyer sign once for the call and the token transfer inside it. There's no `approve` step and no allowance left behind.
 
 ## Threat model

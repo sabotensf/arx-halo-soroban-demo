@@ -112,7 +112,7 @@ One Stellar-specific step: a classic `G…` account needs a **trustline** to hol
 
 ## 4. Royalties
 
-ERC-5791 doesn't cover royalties, and neither does this contract. On Ethereum, ERC-2981 only *reports* a royalty for marketplaces to honour, and OpenZeppelin's Stellar library has the same thing as its `Royalties` extension. A Physical Backed Token makes either one moot: the token moves when someone taps the card, and a tap carries no price, so there's nothing to take a royalty from.
+ERC-5791 doesn't cover royalties, and neither does this contract. On Ethereum, ERC-2981 only *reports* a royalty for marketplaces to honor, and OpenZeppelin's Stellar library has the same thing as its `Royalties` extension. A Physical Backed Token makes either one moot: the token moves when someone taps the card, and a tap carries no price, so there's nothing to take a royalty from.
 
 A paid resale needs a contract in the middle, for example an escrow that releases the buyer's USDC (minus the royalty) to the seller when the chip signs the transfer to the buyer. On Stellar that settlement would still be one buyer signature, because the USDC transfer nests inside the same auth tree.
 
@@ -156,7 +156,7 @@ if chip_id != expected {
 | Recover the signer | `ecrecover` → 20-byte address, zero on failure | `secp256k1_recover` → 65-byte public key, then SHA-256. Failure is a host error, not a silent zero. |
 | Message encoding | `abi.encode(address(this), block.chainid, nonce, to, timestamp, keccak256(extras))` | `pbt:transfer:` tag + SHA-256 over XDR addresses, `network_id` instead of `chainid`, `chip_id` included. A `signature_message` view returns it, so clients don't rebuild XDR. |
 | Purpose separation | None: an `isChipSignatureForToken` challenge and a transfer use the same digest | Transfers sign `pbt:transfer:…`, authenticity checks `pbt:verify:…`, so one can't be used as the other |
-| Cancelling signatures | None | The owner can call `rotate_nonce` |
+| Canceling signatures | None | The owner can call `rotate_nonce` |
 | Freshness | `block.timestamp` window | Ledger timestamp window (`max_duration_window`) |
 | Nonce rotation | XOR with `blockhash(block.number - 1)` | `SHA-256(digest ‖ prng)`: Soroban contracts can't read a block hash |
 | Interface detection | ERC-165 `supportsInterface` | The contract spec in the WASM |

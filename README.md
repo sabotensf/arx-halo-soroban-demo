@@ -5,7 +5,7 @@
 A **RecordPool music smart card** is an NFC chip card for music: tap it on a phone and it plays.
 Each card carries a [HaLo](https://github.com/arx-research/libhalo) NFC chip with its own secp256k1 key pair, which can't be read out or copied.
 
-This Soroban contract makes each card a **Physical Backed Token**, modelled on Ethereum's [ERC-5791](https://eips.ethereum.org/EIPS/eip-5791) and rebuilt with Stellar conventions: **whoever holds the card controls the token.**
+This Soroban contract makes each card a **Physical Backed Token**, modeled on Ethereum's [ERC-5791](https://eips.ethereum.org/EIPS/eip-5791) and rebuilt with Stellar conventions: **whoever holds the card controls the token.**
 The buyer taps the card to buy it for **USDC** and gets back the URL of the track it plays. After that, anyone who taps the card hears the track. You can [try that without a card](#tap-to-play-no-card-needed-to-try-it). The token moves only when someone taps the card, and anyone can check on-chain that a card is genuine.
 Stellar has no standard for physical-backed tokens yet, so this repo also includes a [draft SEP](docs/sep-draft-physical-backed-tokens.md) that brings the ERC-5791 model to Soroban, with this contract as its reference implementation. [ARCHITECTURE.md](ARCHITECTURE.md) explains the design: data structures, protocol and trade-offs. The [STRIDE threat model](docs/stride-threat-model.md) covers security.
 
@@ -18,7 +18,7 @@ This repo adds the physical-backed-token logic: pairing chips with tokens, chip-
 | **Network** | Stellar testnet |
 | **Contract** | [`CATWP7NFVDA2CRHWYFUSCULX7R7HDCYPQYXE7XFHW7R3RBK7VBZN65HO`](https://stellar.expert/explorer/testnet/contract/CATWP7NFVDA2CRHWYFUSCULX7R7HDCYPQYXE7XFHW7R3RBK7VBZN65HO) |
 | **Payment token** | Circle testnet USDC — SAC [`CBIELTK6…DAMA`](https://stellar.expert/explorer/testnet/contract/CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA) (`USDC:GBBD47IF…LFLA5`) |
-| **Standard** | [Draft SEP: Physical Backed Tokens](docs/sep-draft-physical-backed-tokens.md), modelled on [ERC-5791](https://eips.ethereum.org/EIPS/eip-5791); chip signatures use the [SEP-53](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0053.md) message format |
+| **Standard** | [Draft SEP: Physical Backed Tokens](docs/sep-draft-physical-backed-tokens.md), modeled on [ERC-5791](https://eips.ethereum.org/EIPS/eip-5791); chip signatures use the [SEP-53](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0053.md) message format |
 | **Hardware** | [Arx Research HaLo](https://arx-docs.vercel.app/HaLo/specifications) NFC chips (secp256k1, key slot 1), read with [libhalo](https://github.com/arx-research/libhalo) |
 | **Stack** | Rust · soroban-sdk 28 · OpenZeppelin `stellar-tokens` / `stellar-access` / `stellar-macros` 0.8 · Stellar CLI 30 |
 
@@ -36,7 +36,7 @@ This contract uses key slot 1, which can sign any 32-byte digest. The chip signs
 
 ## What's a Physical Backed Token?
 
-[ERC-5791](https://eips.ethereum.org/EIPS/eip-5791) (draft, 2022) is the Ethereum standard for NFTs paired with chips like HaLo. Stellar has no equivalent yet, so this contract takes ERC-5791 as its model and rebuilds it with Stellar's own conventions. The rule is simple: **the chip, not a wallet, authorises every move of the token.**
+[ERC-5791](https://eips.ethereum.org/EIPS/eip-5791) (draft, 2022) is the Ethereum standard for NFTs paired with chips like HaLo. Stellar has no equivalent yet, so this contract takes ERC-5791 as its model and rebuilds it with Stellar's own conventions. The rule is simple: **the chip, not a wallet, authorizes every move of the token.**
 
 - Each token is paired with one chip (`ChipSet` event, `token_id_for_chip(chip)`).
 - A token moves only through `transfer_token`, with a fresh chip signature naming the recipient. Ordinary NFT transfers are disabled.
@@ -133,12 +133,12 @@ sequenceDiagram
 |---|---|---|
 | `__constructor(admin, payment_token, treasury, max_duration_window, base_uri, name, symbol)` | deployer | Runs atomically with deployment. Sets OZ metadata, the admin and `issuer` roles, and how long a chip signature stays valid. |
 | `register_card(chip_id, price, music_url, operator)` | `issuer` | Adds a manufactured card to inventory, with the track it plays (an `http(s)` URL). `chip_id` is SHA-256 of the chip's key-slot-1 public key. |
-| `purchase(buyer, chip_id, chip_signature, recovery_id, signature_timestamp, extras) → { token_id, music_url }` | buyer, holding the card | The chip signs a mint to `buyer`; the buyer's wallet authorises the USDC payment. Pays the treasury and mints the token in one transaction, and returns the card's track. |
+| `purchase(buyer, chip_id, chip_signature, recovery_id, signature_timestamp, extras) → { token_id, music_url }` | buyer, holding the card | The chip signs a mint to `buyer`; the buyer's wallet authorizes the USDC payment. Pays the treasury and mints the token in one transaction, and returns the card's track. |
 | `music_url(chip_id) → url` | anyone | The track a sold card plays. This is what a plain tap looks up, as a free simulation with no wallet. Fails with `NoMappedTokenForChip` while the card is unsold. |
 | `transfer_token(to, chip_id, chip_signature, recovery_id, signature_timestamp, extras) → token_id` | whoever holds the card | **PBT** (ERC-5791 `transferToken`). Moves the token to `to` on a fresh chip signature. No wallet signature needed. |
 | `token_id_for_chip(chip_id) → token_id` | anyone | **PBT** (ERC-5791 `tokenIdFor`). Token paired with a chip. |
 | `is_chip_signature_for_token(token_id, data, chip_signature, recovery_id) → bool` | anyone | **PBT** (ERC-5791 `isChipSignatureForToken`). True if the paired chip signed the SEP-53 digest of `data`, which must start with `pbt:verify:`. Run it as a free simulation. |
-| `rotate_nonce(chip_id)` | the token's owner | Changes the chip's nonce, cancelling every chip signature not yet used (for example after lending the card). |
+| `rotate_nonce(chip_id)` | the token's owner | Changes the chip's nonce, canceling every chip signature not yet used (for example after lending the card). |
 | `signature_message(to, chip_id, signature_timestamp, extras) → message` | anyone | The 45-byte message (`pbt:transfer:` + a 32-byte hash) the chip must sign for `purchase` / `transfer_token`. |
 | `chip_nonce`, `chip_id_for_token`, `card_price`, `config` | anyone | Read-only lookups. |
 | `set_treasury` | `issuer` | Changes where primary-sale proceeds go. |
@@ -363,7 +363,7 @@ Running the demo:
 | [`contracts/recordpool-smart-card/`](contracts/recordpool-smart-card/) | Soroban contract (lib, storage, events, errors, tests) |
 | [`tools/halo-tool/`](tools/halo-tool/) | chip ids, SEP-53 digests, simulated HaLo chip |
 | [`web/index.html`](web/index.html) | tap-to-play page: chip key from the tap URL → `music_url` → audio player |
-| [`web/star-dust.mp3`](web/star-dust.mp3) | the demo card's track: *Stardust*, Isham Jones and His Orchestra (1930), from the [Internet Archive](https://archive.org/details/1930-USA-Archives-1930-05-15-Isham-Jones-Orch-Stardust). Included for demonstration only; not covered by this repository's MIT licence. |
+| [`web/star-dust.mp3`](web/star-dust.mp3) | the demo card's track: *Stardust*, Isham Jones and His Orchestra (1930), from the [Internet Archive](https://archive.org/details/1930-USA-Archives-1930-05-15-Isham-Jones-Orch-Stardust). Included for demonstration only; not covered by this repository's MIT license. |
 | [`web/meta/0`](web/meta/0) | token 0's metadata (`token_uri`), served locally |
 | [`web/testnet.json`](web/testnet.json) | symlink to `deployments/testnet.json`; the tap page reads the contract ID from it |
 | [`scripts/`](scripts/) | `deploy-testnet.sh`, `demo.sh`, `common.sh` |
