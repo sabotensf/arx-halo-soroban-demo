@@ -7,7 +7,7 @@ Each card carries a [HaLo](https://github.com/arx-research/libhalo) NFC chip wit
 
 This Soroban contract makes each card a **Physical Backed Token**, modelled on Ethereum's [ERC-5791](https://eips.ethereum.org/EIPS/eip-5791) and rebuilt with Stellar conventions: **whoever holds the card controls the token.**
 The buyer taps the card to buy it for **USDC** and gets back the URL of the track it plays. After that, anyone who taps the card hears the track. You can [try that without a card](#tap-to-play-no-card-needed-to-try-it). The token moves only when someone taps the card, and anyone can check on-chain that a card is genuine.
-Stellar has no standard for physical-backed tokens yet, so this repo also includes a [draft SEP](docs/sep-draft-physical-backed-tokens.md) that brings the ERC-5791 model to Soroban, with this contract as its reference implementation. [ARCHITECTURE.md](ARCHITECTURE.md) explains the design: data structures, threat model and protocol trade-offs.
+Stellar has no standard for physical-backed tokens yet, so this repo also includes a [draft SEP](docs/sep-draft-physical-backed-tokens.md) that brings the ERC-5791 model to Soroban, with this contract as its reference implementation. [ARCHITECTURE.md](ARCHITECTURE.md) explains the design: data structures, protocol and trade-offs. The [STRIDE threat model](docs/stride-threat-model.md) covers security.
 
 It's built on [OpenZeppelin Stellar Contracts](https://github.com/OpenZeppelin/stellar-contracts) v0.8.0.
 The token standard, enumeration and role-based access control come from that audited library.
@@ -343,7 +343,7 @@ http://localhost:8000/
 
 This is a proof of concept. It has **not been audited**. OpenZeppelin publishes audit reports for the library it builds on.
 
-[ARCHITECTURE.md](ARCHITECTURE.md) explains the design decisions, the threat model and the full list of trade-offs. The main limitations:
+[ARCHITECTURE.md](ARCHITECTURE.md) explains the design decisions and the full list of trade-offs, and the [STRIDE threat model](docs/stride-threat-model.md) the security analysis. The main limitations:
 
 - **No resale royalties.** A tap transfer carries no price; an escrow could add one.
 - **Buying needs the card in hand.** `purchase` requires the chip's signature.
@@ -368,7 +368,7 @@ Running the demo:
 | [`web/testnet.json`](web/testnet.json) | symlink to `deployments/testnet.json`; the tap page reads the contract ID from it |
 | [`scripts/`](scripts/) | `deploy-testnet.sh`, `demo.sh`, `common.sh` |
 | [`deployments/testnet.json`](deployments/testnet.json) | live deployment record |
-| [`ARCHITECTURE.md`](ARCHITECTURE.md) | design rationale: data structures, threat model, trade-offs |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | design rationale: data structures, protocol, trade-offs |
 | [`docs/sep-draft-physical-backed-tokens.md`](docs/sep-draft-physical-backed-tokens.md) | draft SEP: physical backed tokens on Soroban |
 | [`docs/ethereum-vs-soroban.md`](docs/ethereum-vs-soroban.md) | Ethereum → Soroban comparison |
 | [`docs/engagement-write-up.md`](docs/engagement-write-up.md) | engagement write-up: discovery → design → derisking → product feedback |

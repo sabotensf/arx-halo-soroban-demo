@@ -11,7 +11,7 @@ Contract: contracts/recordpool-smart-card (soroban-sdk 28, OpenZeppelin Stellar 
 Related: docs/sep-draft-physical-backed-tokens.md (the interface as a draft standard)
 ```
 
-This document explains why the contract is built the way it is: its data structures, its threat model and the protocol trade-offs behind each decision. It's a design doc for this one contract. The [draft SEP](docs/sep-draft-physical-backed-tokens.md) specifies the public interface; this document covers the implementation behind it.
+This document explains why the contract is built the way it is: its data structures, its protocol and the trade-offs behind each decision. It's a design doc for this one contract. The [draft SEP](docs/sep-draft-physical-backed-tokens.md) specifies the public interface; this document covers the implementation behind it.
 
 ## Simple Summary
 
@@ -152,45 +152,7 @@ Each field closes off one attack:
 
 ## Threat model
 
-### Assets
-
-What an attacker might want to steal, forge or break:
-
-| Asset | What an attacker would want | What protects it |
-|---|---|---|
-| The token (ownership of the card) | Move it to themselves without holding the card | Every transfer needs a fresh chip signature; wallet transfers are disabled. |
-| The purchase price | Redirect the USDC, or take it without the card being minted | Payment and mint are one atomic transaction; the buyer authorizes only that transfer. |
-| The issuer role | Register a software key as a "card" and sell fakes | `register_card` is gated by `#[only_role(operator, "issuer")]`. |
-| Each chip's nonce | Reset or predict it, so an old tap can be replayed | It changes after every use, the owner can change it at any time (`rotate_nonce`), and it's persistent, so it can't expire back to zero. |
-
-### Actors and what they can do
-
-| Actor | Can | Cannot |
-|---|---|---|
-| Card holder | Move the token to anyone by tapping | Move a token without its card |
-| Token owner | Cancel unused chip signatures (`rotate_nonce`) | Move the token without its card |
-| Token owner without the card | Nothing to the token | Transfer it: wallet transfers fail (3010) |
-| Issuer (role) | Register new chips, set the treasury | Move, burn or re-pair any minted token |
-| Admin | Grant and revoke roles (two-step admin transfer) | Move any token |
-| Observer of pending transactions or the ledger | See signatures and chip ids | Redirect a signature (`to` is bound) or replay it (nonce) |
-| Anyone | Call views, play a sold card's track | Change state without a chip signature or a role |
-
-Holding the issuer key doesn't give power over cards already sold. Compromising it lets an attacker register fake chips for sale or redirect future proceeds, but not take existing tokens.
-
-### Threats
-
-| Threat | Mitigation | Residual risk |
-|---|---|---|
-| Counterfeit card | A copy has the public key but not the private key, so it can't produce a signature that recovers to `chip_id` (3006). | A copy can still *play* the track: playing needs only the public key. |
-| Replayed tap | The nonce changes after each accepted signature; the time window bounds unsubmitted ones. | None within the model. |
-| Cross-deployment or cross-network replay | `contract` and `network_id` are in the message. | None. |
-| Front-running a transfer | `to` is in the message. | The submitter can delay, but not redirect. |
-| Malicious app asks the chip to sign | The SEP-53 prefix and the message binding limit what a signature can be used for. Transfers and authenticity checks use different tags, so a genuine "verify this card" signature can never move the token. | Key slot 1 signs any digest. A malicious page that gets a tap can still have the chip sign a tagged transfer to the attacker. Users should only tap cards into apps they trust. |
-| Future-dated signature from a borrowed card | The owner can call `rotate_nonce` to cancel every unused signature. | The owner has to know to do it; until then, the signature works once its timestamp arrives if the card hasn't moved. |
-| Fake chip registered | `register_card` is gated by the issuer role. | Trust starts with the issuer. A production version would verify HaLo's manufacturer attestation (`attestSig`) at registration. |
-| Lost or stolen card | None: possession is ownership, by design. | The token goes with the card, or stays stuck with a lost one. |
-| Storage expiry | Card entries are extended on access and the instance on every state change; persistent entries are archived, not deleted; the nonce can't reset. | A contract left unused for 30 days is archived and needs restoring before its next call. |
-| Payment failure mid-purchase | The whole transaction is atomic. | None: tested in `underfunded_purchase_is_atomic`. |
+The threat model follows SDF's [STRIDE template](https://developers.stellar.org/docs/build/security-docs/threat-modeling/STRIDE-template) and is in [docs/stride-threat-model.md](docs/stride-threat-model.md). It lists each spoofing, tampering, repudiation, information-disclosure, denial-of-service and elevation-of-privilege issue, with its remediation or accepted risk and, where there is one, the test that checks it.
 
 ## Trade-offs and limitations
 

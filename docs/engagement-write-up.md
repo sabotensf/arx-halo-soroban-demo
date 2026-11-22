@@ -9,7 +9,7 @@
 I ran a full partner engagement on myself: RecordPool, my phygital music platform on Ethereum, as the partner, and Stellar as the target. In four stages I went from discovery to a working testnet integration, and fed one standards gap back as a draft SEP.
 
 1. **Discovery:** what RecordPool needs, and what changes moving from EVM to Soroban.
-2. **Solution design:** a Physical Backed Token (PBT) contract, modelled on [ERC-5791](https://eips.ethereum.org/EIPS/eip-5791), with a written threat model.
+2. **Solution design:** a Physical Backed Token (PBT) contract, modelled on [ERC-5791](https://eips.ethereum.org/EIPS/eip-5791), with a threat model in SDF's STRIDE format.
 3. **Derisking:** a prototype with 38 tests, a simulated chip, an adversarial code review and a live testnet deploy.
 4. **Feedback to Product:** a draft SEP for chip-backed tokens, plus the tooling friction I hit.
 
@@ -17,7 +17,7 @@ The result is a public repo a partner's engineers could fork, and a template for
 
 ## Discovery
 
-The partner's core need: a physical music card whose token moves only when the card itself is tapped, sold for a small consumer price. Today RecordPool verifies NTAG 424 chips on a backend, with Ethereum Attestation Service (EAS) attestations and 0xSplits payouts on Ethereum.
+The partner's core need: a physical music card whose token moves only when the card itself is tapped and sold for USDC. Today RecordPool verifies NTAG 424 chips on a backend, with Ethereum Attestation Service (EAS) attestations and 0xSplits payouts on Ethereum.
 
 NTAG 424 proves a tap with a shared AES key, so only a backend holding that key can check it. A [HaLo](https://github.com/arx-research/libhalo) chip signs with a secp256k1 key that never leaves the chip, and a contract can check that signature itself. That is why the design moves to HaLo and takes the backend out of the trust path.
 
@@ -25,7 +25,7 @@ Requirements I took into design:
 
 - The chip's private key never leaves the card, and verification happens on-chain, not on a server.
 - A tap must authenticate, buy and transfer; wallet transfers are disabled.
-- Payment in a stablecoin, with fees small enough for a consumer purchase.
+- Payment in USDC, with fees small enough for a consumer purchase.
 - Tap to play without a wallet, a fee or a transaction.
 
 The EVM-to-Stellar assessment ([ethereum-vs-soroban.md](ethereum-vs-soroban.md)) found the biggest shifts in auth, storage and token payments:
@@ -71,11 +71,22 @@ Later owners move the token with the same tap through `transfer_token`, with no 
 | Keep the music URL in public storage, gated in the page | Tap to play needs no wallet or fee | Anyone can read the URL |
 | Leave royalties out, as ERC-5791 does | A tap carries no on-chain price to take a cut from | No resale royalties; an escrow is sketched in ARCHITECTURE.md |
 
-The threat model follows assets, actors, threats, mitigations and residual risk. It covers four assets: the token, the purchase price, the issuer role and each chip's nonce. The residual risks are stated, not hidden: anyone can read the music URL, a slow transaction can miss the time window, and `is_chip_signature_for_token` proves who signed but not when, so callers must add their own random value. The same model is written up in SDF's STRIDE format in [stride-threat-model.md](stride-threat-model.md).
+The [threat model](stride-threat-model.md) uses SDF's [STRIDE template](https://developers.stellar.org/docs/build/security-docs/threat-modeling/STRIDE-template). It looks at two trust boundaries: the NFC link, which any app the user taps into can drive, and the pending transaction, which anyone can see. The main finding in each category:
+
+| STRIDE category | Main finding | How it's handled |
+| --- | --- | --- |
+| Spoofing | A counterfeit card copies the chip's public key | The contract recovers the signer's key and matches it to `chip_id` |
+| Tampering | A pending signature is replayed or redirected | The nonce, contract, network and recipient are all signed |
+| Repudiation | A buyer denies a purchase | Wallet and chip signatures, plus contract events, on the ledger |
+| Information disclosure | The ledger links a card to every account that has held it | Accepted: ownership is public by design |
+| Denial of service | Storage entries expire and calls fail | TTLs extended on access and on every state change |
+| Elevation of privilege | A "verify this card" tap is submitted as a transfer | Every signed message is tagged by purpose |
+
+Every issue has a fix or a stated acceptance. The main accepted risks: a malicious app that gets a tap can still have the chip sign a transfer, anyone can read the music URL, and a lost card means a lost token.
 
 ## Derisking
 
-I proved the riskiest parts before any hardware: the contract is live on testnet, and the threat model's main properties each have a test.
+I proved the riskiest parts before any hardware: the contract is live on testnet, and most of the threat model's fixes have a test.
 
 - **Simulated chip:** `halo-tool` signs the exact SEP-53 digest with k256, the same way the HaLo chip does, and converts real libhalo output (`v − 27`).
 - **Tests:** 35 contract tests and 3 tool tests. They cover counterfeit chips, buyer and recipient binding, single use, the window edges, contract and network binding, a bad recovery id, disabled wallet transfers, the music URL unlocking at sale, events, storage TTLs, and both signature-hardening fixes below.
@@ -102,7 +113,7 @@ Each stage of this engagement can become a standard deliverable, so the team run
 | Program element | From this project | At scale |
 | --- | --- | --- |
 | Engagement model | Discovery, design, derisking, feedback | The same four stages for every partner, with an exit check for each |
-| Documentation standard | Migration assessment and design review with a threat model | Templates every solutions engineer (SE) fills in, reviewed before launch |
+| Documentation standard | Migration assessment, design review and a STRIDE threat model | Templates every solutions engineer (SE) fills in, reviewed before launch |
 | Partner tiering | A full prototype for one partner | High-tier partners get a prototype; others get reference repos and design reviews |
 | Certification | A reference build with tests for each threat | New SEs, in-house and external, rebuild a reference integration to be certified |
 | Product feedback loop | Gaps logged and a draft SEP | Gaps logged per engagement and rolled up to Product and Engineering |
@@ -110,7 +121,7 @@ Each stage of this engagement can become a standard deliverable, so the team run
 ## Links
 
 - [Repository](https://github.com/sabotensf/arx-halo-soroban-demo)
-- [Architecture and threat model](../ARCHITECTURE.md)
+- [Architecture](../ARCHITECTURE.md)
 - [STRIDE threat model](stride-threat-model.md)
 - [Ethereum vs Soroban assessment](ethereum-vs-soroban.md)
 - [Draft SEP: Physical Backed Tokens](sep-draft-physical-backed-tokens.md)

@@ -2,7 +2,7 @@
 
 *2026-11-20 · David Geddes*
 
-*This follows SDF's [STRIDE threat model template](https://developers.stellar.org/docs/build/security-docs/threat-modeling/STRIDE-template). The assets, actors and trade-offs behind it are in [ARCHITECTURE.md](../ARCHITECTURE.md#threat-model).*
+*This follows SDF's [STRIDE threat model template](https://developers.stellar.org/docs/build/security-docs/threat-modeling/STRIDE-template). The design decisions and trade-offs behind it are in [ARCHITECTURE.md](../ARCHITECTURE.md).*
 
 ## What are we working on?
 
@@ -41,6 +41,18 @@ flowchart LR
 
 The trust boundaries are the NFC link (1–2), which any page the user taps into can drive, and the transaction (3–4), which anyone watching the network can see before it lands.
 
+### Actors
+
+| Actor | Can | Cannot |
+|---|---|---|
+| Card holder | Move the token to anyone by tapping | Move a token without its card |
+| Token owner | Cancel unused chip signatures (`rotate_nonce`) | Move the token without its card |
+| Token owner without the card | Nothing to the token | Transfer it: wallet transfers fail (3010) |
+| Issuer (role) | Register new chips, set the treasury | Move, burn or re-pair any minted token |
+| Admin | Grant and revoke roles (two-step admin transfer) | Move any token |
+| Observer of pending transactions or the ledger | See signatures and chip ids | Redirect a signature (`to` is bound) or replay it (nonce) |
+| Anyone | Call views, play a sold card's track | Change state without a chip signature or a role |
+
 ### Threat table
 
 | Threat | Issues |
@@ -66,7 +78,7 @@ The trust boundaries are the NFC link (1–2), which any page the user taps into
 ## Did we do a good job?
 
 - **Has the data flow diagram been referenced since it was created?** Yes. Each issue above sits on one of its two trust boundaries, the NFC link or the pending transaction, or on the issuer's path into the contract.
-- **Did the STRIDE model uncover any new design issues?** One: **Info.2**, the link between a card and every account that has held it. The earlier threat model listed what an observer can see, but not this privacy cost. **Elevation.3** and **Elevation.4** were found earlier, by the adversarial code review, and are fixed.
+- **Did the STRIDE model uncover any new design issues?** One: **Info.2**, the link between a card and every account that has held it. The earlier design notes listed what an observer can see, but not this privacy cost. **Elevation.3** and **Elevation.4** were found earlier, by the adversarial code review, and are fixed.
 - **Did the treatments adequately address the issues?** Every issue has a remediation or a stated acceptance. Of the mitigations, all but Spoof.3.R.1, Elevation.2.R.1 and Elevation.5.R.1 have a contract test.
 - **Have additional issues been found after the threat model?** Not yet. The contract hasn't had an external audit or a run on a physical HaLo card.
 - **Thoughts for next time:** run STRIDE at design time, before the code review. Here it came after, so it mostly confirmed what the review had found.
